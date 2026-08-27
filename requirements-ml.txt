@@ -1,0 +1,7 @@
+# Chỉ cài khi đã có dữ liệu và bắt đầu giai đoạn Hybrid ViT + LSTM.
+torch
+transformers
+opencv-python
+Pillow
+scikit-learn
+

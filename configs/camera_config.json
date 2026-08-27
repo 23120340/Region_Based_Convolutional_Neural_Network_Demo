@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "model": "yolov8s-worldv2.pt",
+  "confidence": 0.12,
+  "image_size": 640,
+  "infer_every_n_frames": 2,
+  "dwell_frames": 4,
+  "work_zone_normalized": [0.22, 0.34, 0.78, 0.92],
+  "classes": [
+    {
+      "label": "barrel",
+      "prompt": "disassembled ballpoint pen barrel",
+      "action": "pick_barrel",
+      "color_bgr": [63, 185, 80]
+    },
+    {
+      "label": "refill",
+      "prompt": "ballpoint pen ink refill tube",
+      "action": "insert_refill",
+      "color_bgr": [230, 145, 56]
+    },
+    {
+      "label": "spring",
+      "prompt": "small metal coil spring",
+      "action": "insert_spring",
+      "color_bgr": [64, 176, 255]
+    },
+    {
+      "label": "cap",
+      "prompt": "ballpoint pen cap",
+      "action": "screw_cap",
+      "color_bgr": [192, 94, 255]
+    },
+    {
+      "label": "assembled_pen",
+      "prompt": "assembled ballpoint pen",
+      "action": null,
+      "color_bgr": [50, 220, 220]
+    }
+  ]
+}

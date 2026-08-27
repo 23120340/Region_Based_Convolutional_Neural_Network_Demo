@@ -1,0 +1,12 @@
+path: .
+train: images/train
+val: images/val
+test: images/test
+
+names:
+  0: barrel
+  1: refill
+  2: spring
+  3: cap
+  4: assembled_pen
+

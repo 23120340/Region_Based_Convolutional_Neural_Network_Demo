@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "project": "click_pen_assembly_v1",
+  "initial_state": "S0_IDLE",
+  "completed_state": "S5_TEST_CLICKED",
+  "idle_actions": ["idle", "uncertain"],
+  "actions": {
+    "idle": "Đang chờ",
+    "pick_barrel": "Đặt thân bút",
+    "insert_refill": "Lắp ruột bút",
+    "insert_spring": "Lắp lò xo",
+    "screw_cap": "Vặn nắp bút",
+    "test_click": "Bấm thử"
+  },
+  "workflow": [
+    {"state": "S1_BARREL_READY", "action": "pick_barrel", "label": "Đặt thân bút vào vùng lắp"},
+    {"state": "S2_REFILL_INSERTED", "action": "insert_refill", "label": "Đưa ruột vào thân bút"},
+    {"state": "S3_SPRING_INSERTED", "action": "insert_spring", "label": "Luồn lò xo vào đầu ruột"},
+    {"state": "S4_CAP_SCREWED", "action": "screw_cap", "label": "Vặn chặt nắp/thân trên"},
+    {"state": "S5_TEST_CLICKED", "action": "test_click", "label": "Bấm thử cơ cấu ngòi"}
+  ],
+  "states": {
+    "S0_IDLE": {
+      "message": "Sẵn sàng: hãy đặt thân bút vào vùng lắp.",
+      "allowed": {"pick_barrel": "S1_BARREL_READY"},
+      "violations": {
+        "insert_refill": "Chưa đặt thân bút vào vùng lắp.",
+        "insert_spring": "Chưa có thân và ruột bút mà đã lắp lò xo.",
+        "screw_cap": "Chưa có các linh kiện bên trong mà đã vặn nắp.",
+        "test_click": "Bút chưa được lắp mà đã bấm thử."
+      }
+    },
+    "S1_BARREL_READY": {
+      "message": "Đã có thân bút: hãy đưa ruột bút vào.",
+      "allowed": {"insert_refill": "S2_REFILL_INSERTED"},
+      "violations": {
+        "insert_spring": "Sai thứ tự: chưa đưa ruột vào thân mà đã lắp lò xo.",
+        "screw_cap": "Bỏ bước: thân bút chưa có ruột mực.",
+        "test_click": "Bút chưa hoàn thiện, không thể bấm thử."
+      }
+    },
+    "S2_REFILL_INSERTED": {
+      "message": "Đã lắp ruột: hãy luồn lò xo vào đầu ruột.",
+      "allowed": {"insert_spring": "S3_SPRING_INSERTED"},
+      "violations": {
+        "screw_cap": "Bỏ bước: quên lắp lò xo trợ lực ngòi bút.",
+        "test_click": "Chưa có lò xo và nắp đậy mà đã bấm thử."
+      }
+    },
+    "S3_SPRING_INSERTED": {
+      "message": "Đã lắp lò xo: hãy vặn nắp trên vào thân.",
+      "allowed": {"screw_cap": "S4_CAP_SCREWED"},
+      "violations": {
+        "insert_refill": "Ruột bút đã có bên trong, không được cắm thêm.",
+        "test_click": "Chưa vặn nắp cố định thân bút mà đã bấm thử."
+      }
+    },
+    "S4_CAP_SCREWED": {
+      "message": "Đã vặn nắp: hãy bấm nút đuôi để kiểm tra ngòi.",
+      "allowed": {"test_click": "S5_TEST_CLICKED"},
+      "violations": {
+        "insert_refill": "Nắp đã đóng, không thể lắp thêm ruột.",
+        "insert_spring": "Nắp đã đóng, không thể lắp thêm lò xo."
+      }
+    },
+    "S5_TEST_CLICKED": {
+      "message": "Hoàn tất: bút đã lắp đúng quy trình. Có thể bắt đầu cây mới.",
+      "allowed": {"pick_barrel": "S1_BARREL_READY"},
+      "violations": {
+        "insert_refill": "Chu trình đã hoàn tất; hãy bắt đầu cây bút mới.",
+        "insert_spring": "Chu trình đã hoàn tất; hãy bắt đầu cây bút mới.",
+        "screw_cap": "Chu trình đã hoàn tất; hãy bắt đầu cây bút mới.",
+        "test_click": "Bước kiểm tra đã được ghi nhận."
+      }
+    }
+  }
+}
+
