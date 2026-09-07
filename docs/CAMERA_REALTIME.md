@@ -36,6 +36,43 @@ python scripts/run_camera.py --source 0
 
 Nếu camera mặc định không đúng, thử `--source 1`. Có thể chỉnh ROI chuẩn hóa, confidence, prompt và tần suất inference tại `configs/camera_config.json`.
 
+### Chọn và chuyển camera
+
+Gắn camera USB vào laptop, sau đó kiểm tra các index khả dụng:
+
+```powershell
+python scripts/run_camera.py --list-cameras
+```
+
+Khởi động trực tiếp bằng camera mong muốn:
+
+```powershell
+python scripts/run_camera.py --source 1
+```
+
+Trong cửa sổ đang chạy, nhấn `C` để chương trình đóng camera hiện tại, dò lại các index từ 0 đến 5 và chuyển sang camera kế tiếp. Nhờ dò lại tại thời điểm nhấn `C`, camera USB vừa gắn thêm cũng có thể được phát hiện. FSM giữ nguyên bước hiện tại, còn detection và gợi ý đang chờ được xóa để tránh mang kết quả từ camera cũ sang camera mới.
+
+Nếu máy có camera ở index lớn hơn 5:
+
+```powershell
+python scripts/run_camera.py --source 0 --max-camera-index 10
+```
+
+### Model ImageNet-1K dùng ở đâu?
+
+File `models/tf_model.h5` hiện có cấu trúc ViT-Base: patch 16×16, embedding 768 chiều, 12 encoder layer và classifier 1.000 lớp. Đây là trọng số pretrained tốt để khởi tạo bộ trích đặc trưng không gian cho action model ViT + LSTM.
+
+Nó không thay thế YOLO detector vì ImageNet-1K phân loại toàn ảnh và không trả bounding box. Pipeline dự kiến là:
+
+```text
+YOLO checkpoint (.pt)        -> box và class linh kiện
+ViT ImageNet-1K (.h5)        -> embedding 768 chiều từng frame
+LSTM checkpoint sau khi train -> action theo chuỗi frame
+FSM                          -> đúng/sai quy trình
+```
+
+File `.h5` là weights theo cấu trúc Hugging Face/Keras, vì vậy khi tích hợp cần đúng ViT config và image processor tương ứng; không sử dụng nó làm đối số `--model` của script YOLO camera.
+
 Ngưỡng `confidence` zero-shot mặc định thấp (`0.12`) để thăm dò. Nếu xuất hiện nhiều box sai, tăng dần lên `0.20`–`0.30`. Nếu bỏ sót, giảm nhẹ hoặc đưa camera gần hơn. Lò xo là đối tượng khó nhất vì rất nhỏ.
 
 ## 4. Có cần dataset và train không?

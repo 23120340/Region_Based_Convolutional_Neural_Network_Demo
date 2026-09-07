@@ -1,0 +1,7 @@
+video_id,person_id,session_id,split,start_time_s,end_time_s,action_name,is_anomaly
+person01_session01_correct_EXAMPLE_001,person01,session01,train,0.000,1.000,idle,0
+person01_session01_correct_EXAMPLE_001,person01,session01,train,1.000,2.200,pick_barrel,0
+person01_session01_correct_EXAMPLE_001,person01,session01,train,2.200,3.800,insert_refill,0
+person01_session01_correct_EXAMPLE_001,person01,session01,train,3.800,5.200,insert_spring,0
+person01_session01_correct_EXAMPLE_001,person01,session01,train,5.200,7.500,screw_cap,0
+person01_session01_correct_EXAMPLE_001,person01,session01,train,7.500,9.000,test_click,0

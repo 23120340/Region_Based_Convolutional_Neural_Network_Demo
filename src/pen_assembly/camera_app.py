@@ -11,7 +11,7 @@ from .fsm import FsmOutcome
 from .monitor import AssemblyMonitor, JsonlEventLogger
 from .paths import DEFAULT_CONFIG, DEFAULT_EVENT_LOG, PROJECT_ROOT
 from .smoother import TemporalDebouncer
-from .vision import ComponentDwellGate, ComponentSuggestion, Detection, NormalizedZone
+from .vision import ComponentDwellGate, ComponentSuggestion, Detection
 from .yolo_world_detector import YoloWorldDetector
 from .fsm import ConfigurableAssemblyTracker
 
@@ -65,6 +65,51 @@ def _open_capture(cv2, source: int | str):
     return capture
 
 
+def discover_camera_indices(cv2, max_camera_index: int = 5) -> list[int]:
+    """Return camera indices that can provide at least one frame.
+
+    Cameras are probed only on startup/list requests or when the user presses C,
+    not during every inference frame.
+    """
+
+    if max_camera_index < 0:
+        raise ValueError("max_camera_index phải >= 0")
+    available: list[int] = []
+    backend = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
+    logging_api = getattr(getattr(cv2, "utils", None), "logging", None)
+    get_log_level = getattr(cv2, "getLogLevel", None) or getattr(logging_api, "getLogLevel", None)
+    set_log_level = getattr(cv2, "setLogLevel", None) or getattr(logging_api, "setLogLevel", None)
+    silent_level = getattr(logging_api, "LOG_LEVEL_SILENT", 0)
+    previous_log_level = get_log_level() if get_log_level is not None else None
+    try:
+        if set_log_level is not None:
+            set_log_level(silent_level)
+        for index in range(max_camera_index + 1):
+            capture = cv2.VideoCapture(index, backend)
+            try:
+                if capture.isOpened():
+                    ok, _ = capture.read()
+                    if ok:
+                        available.append(index)
+            finally:
+                capture.release()
+    finally:
+        if set_log_level is not None and previous_log_level is not None:
+            set_log_level(previous_log_level)
+    return available
+
+
+def next_camera_index(current: int, available: list[int]) -> int:
+    """Select the next available index, wrapping around deterministically."""
+
+    ordered = sorted(set(available))
+    if not ordered:
+        return current
+    if current not in ordered:
+        return ordered[0]
+    return ordered[(ordered.index(current) + 1) % len(ordered)]
+
+
 def _build_monitor():
     assembly_config = load_config(DEFAULT_CONFIG)
     tracker = ConfigurableAssemblyTracker(assembly_config)
@@ -84,6 +129,7 @@ def run_camera(
     mirror: bool = True,
     auto_advance: bool = False,
     max_frames: int | None = None,
+    max_camera_index: int = 5,
 ) -> None:
     try:
         import cv2
@@ -99,7 +145,8 @@ def run_camera(
         raise ValueError(f"camera_config dùng action không tồn tại: {sorted(unknown_actions)}")
     detector = YoloWorldDetector(camera_config, model_path=model_path, device=device)
     gate = ComponentDwellGate(camera_config.action_map, camera_config.dwell_frames)
-    capture = _open_capture(cv2, source)
+    active_source = source
+    capture = _open_capture(cv2, active_source)
 
     detections: list[Detection] = []
     suggestion: ComponentSuggestion | None = None
@@ -134,7 +181,7 @@ def run_camera(
                         outcome = monitor.submit_stable_action(emitted.action)
                         print(f"[{outcome.type}] {outcome.action}: {outcome.message}")
                         suggestion = None
-                        gate.reset()
+                        gate.acknowledge()
                 suggestion = gate.current_suggestion
 
             overlay = frame.copy()
@@ -149,16 +196,18 @@ def run_camera(
 
             expected = ", ".join(monitor.tracker.expected_actions) or "none"
             mode = "AUTO (experimental)" if auto_advance else "ASSISTED"
-            _put_text(cv2, frame, f"Pen Assembly Camera | {mode} | inference {last_inference_ms:.0f} ms", (18, 28), 0.62)
+            _put_text(cv2, frame, f"Camera {active_source} | {mode} | inference {last_inference_ms:.0f} ms", (18, 28), 0.62)
             _put_text(cv2, frame, f"State: {monitor.tracker.state} | Expected: {expected}", (18, 58), 0.60)
             if suggestion is not None:
-                _put_text(cv2, frame, f"Suggestion: {suggestion.action} - press SPACE to confirm", (18, 88), 0.62, (0, 255, 255))
+                prefix = "Expected" if suggestion.is_expected else "UNEXPECTED"
+                color = (0, 255, 255) if suggestion.is_expected else (70, 70, 255)
+                _put_text(cv2, frame, f"{prefix}: {suggestion.action} - press SPACE to confirm", (18, 88), 0.62, color)
             elif outcome is not None:
                 color = (80, 230, 100) if outcome.type == "PASS" else (70, 70, 255)
                 _put_text(cv2, frame, f"{outcome.type}: {outcome.action}", (18, 88), 0.62, color)
             else:
                 _put_text(cv2, frame, "Move the expected component into WORK ZONE", (18, 88), 0.60, (190, 210, 255))
-            _put_text(cv2, frame, "SPACE confirm | 1-5 manual steps | R reset | S screenshot | Q quit", (18, 120), 0.52, (205, 213, 224))
+            _put_text(cv2, frame, "SPACE confirm | 1-5 steps | C switch cam | R reset | S shot | Q quit", (18, 120), 0.50, (205, 213, 224))
 
             cv2.imshow("Pen Assembly - Real-time Camera", frame)
             key = cv2.waitKey(1) & 0xFF
@@ -170,6 +219,29 @@ def run_camera(
                 outcome = monitor.reset()
                 suggestion = None
                 gate.reset()
+            elif key in (ord("c"), ord("C")):
+                if not isinstance(active_source, int):
+                    print("Không thể chuyển camera khi --source là đường dẫn video/stream.")
+                    continue
+                previous_source = active_source
+                capture.release()
+                available = discover_camera_indices(cv2, max_camera_index)
+                target_source = next_camera_index(previous_source, available)
+                try:
+                    capture = _open_capture(cv2, target_source)
+                except RuntimeError as error:
+                    print(f"Không chuyển được camera: {error}")
+                    capture = _open_capture(cv2, previous_source)
+                else:
+                    active_source = target_source
+                    detections = []
+                    suggestion = None
+                    outcome = None
+                    gate.reset()
+                    if target_source == previous_source:
+                        print(f"Chỉ tìm thấy camera {active_source}; tiếp tục sử dụng camera hiện tại.")
+                    else:
+                        print(f"Đã chuyển camera {previous_source} -> {active_source}.")
             elif key == ord("s"):
                 screenshot_dir.mkdir(parents=True, exist_ok=True)
                 path = screenshot_dir / f"camera_{time.strftime('%Y%m%d_%H%M%S')}.jpg"
@@ -179,12 +251,12 @@ def run_camera(
                 outcome = monitor.submit_stable_action(suggestion.action)
                 print(f"[{outcome.type}] {outcome.action}: {outcome.message}")
                 suggestion = None
-                gate.reset()
+                gate.acknowledge()
             elif key in ACTION_KEYS:
                 outcome = monitor.submit_stable_action(ACTION_KEYS[key])
                 print(f"[{outcome.type}] {outcome.action}: {outcome.message}")
                 suggestion = None
-                gate.reset()
+                gate.acknowledge()
     finally:
         capture.release()
         cv2.destroyAllWindows()
@@ -198,6 +270,8 @@ def main() -> int:
     parser.add_argument("--model", default=None, help="Override model checkpoint")
     parser.add_argument("--device", default=None, help="cpu, 0, 1, ...; default is automatic")
     parser.add_argument("--no-mirror", action="store_true")
+    parser.add_argument("--list-cameras", action="store_true", help="List available camera indices and exit")
+    parser.add_argument("--max-camera-index", type=int, default=5, help="Highest camera index to probe")
     parser.add_argument("--max-frames", type=int, default=None, help=argparse.SUPPRESS)
     parser.add_argument(
         "--auto-advance",
@@ -205,6 +279,19 @@ def main() -> int:
         help="Experimental: accept a component dwell without pressing Space",
     )
     args = parser.parse_args()
+    if args.list_cameras:
+        try:
+            import cv2
+        except ImportError as error:
+            raise RuntimeError(
+                "Thiếu OpenCV. Chạy: python -m pip install -r requirements-camera.txt"
+            ) from error
+        available = discover_camera_indices(cv2, args.max_camera_index)
+        if available:
+            print("Camera khả dụng: " + ", ".join(str(index) for index in available))
+        else:
+            print("Không tìm thấy camera khả dụng.")
+        return 0
     run_camera(
         source=_camera_source(args.source),
         camera_config_path=args.camera_config,
@@ -213,5 +300,6 @@ def main() -> int:
         mirror=not args.no_mirror,
         auto_advance=args.auto_advance,
         max_frames=args.max_frames,
+        max_camera_index=args.max_camera_index,
     )
     return 0

@@ -7,3 +7,10 @@ checkpoints/
 *.pt
 data/raw_videos/
 data/features_cache/
+datasets/pen_parts/raw
+datasets/pen_parts/images/
+datasets/pen_parts/labels/
+datasets/**/*.cache
+data/pen_actions/raw_videos/
+data/pen_actions/features/
+*.h5

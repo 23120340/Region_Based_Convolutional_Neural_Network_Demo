@@ -50,10 +50,18 @@ Chạy camera số 0:
 python scripts/run_camera.py --source 0
 ```
 
+Liệt kê các camera đang kết nối và chọn camera USB, ví dụ camera số 1:
+
+```powershell
+python scripts/run_camera.py --list-cameras
+python scripts/run_camera.py --source 1
+```
+
 Lần chạy đầu, chương trình tải checkpoint `yolov8s-worldv2.pt`. Đặt bốn khay linh kiện ngoài khung vàng và đưa linh kiện đang thao tác vào **WORK ZONE**. Các phím điều khiển:
 
 - `Space`: xác nhận hành động được detector gợi ý.
 - `1`–`5`: xác nhận thủ công từng bước từ đặt thân đến bấm thử.
+- `C`: dò lại thiết bị và chuyển sang camera khả dụng tiếp theo khi chương trình đang chạy.
 - `R`: reset chu trình; `S`: chụp ảnh bằng chứng; `Q`: thoát.
 
 Có thể thử tự chuyển bốn bước dựa trên sự hiện diện của linh kiện:
@@ -63,6 +71,10 @@ python scripts/run_camera.py --source 0 --auto-advance
 ```
 
 `--auto-advance` chỉ là baseline thử nghiệm. Detector biết **vật gì đang hiện diện**, nhưng không thể chứng minh thao tác “đã cắm”, “đã vặn” hay “đã bấm”; vì vậy chế độ có Space là mặc định. Xem [docs/CAMERA_REALTIME.md](docs/CAMERA_REALTIME.md) để hiệu chỉnh, thu dataset và train model riêng.
+
+### Vai trò của model ImageNet-1K
+
+`models/tf_model.h5` là ViT-Base pretrained với embedding 768 chiều và classifier 1.000 lớp ImageNet. Model này hữu ích làm backbone/trích đặc trưng cho action model ViT + LSTM, nhưng không phải object detector và không tự sinh bounding box cho `barrel/refill/spring/cap`. Không truyền file `.h5` này vào tham số `--model` của `run_camera.py`; tham số đó nhận checkpoint YOLO `.pt`.
 
 ## Bố trí mô hình vật lý nhỏ
 
@@ -99,3 +111,24 @@ Chỉ chuyển sang huấn luyện Hybrid ViT + LSTM sau khi:
 4. Baseline trên tập test tách theo người đạt ngưỡng đã thống nhất (đề xuất Macro-F1 ≥ 0,85).
 
 Xem [docs/MVP_PEN_ASSEMBLY.md](docs/MVP_PEN_ASSEMBLY.md) để biết tiêu chí nghiệm thu và lộ trình chuyển sang camera/model thật.
+
+## Pipeline action recognition ViT + BiLSTM
+
+Sau khi có video đã gán nhãn, chạy lần lượt:
+
+```powershell
+# 1. Quay từng chu trình hoàn chỉnh
+python scripts/record_assembly_videos.py --source 0 --person person01 --session session01 --scenario correct
+
+# 2. Sao chép annotations_template.csv thành annotations.csv rồi gán thời gian
+# 3. Cache CLS embedding từ ViT frozen
+python scripts/extract_spatial_features.py
+
+# 4. Train BiLSTM
+python scripts/train_action_model.py
+
+# 5. Đánh giá duy nhất trên test split sau khi chốt model
+python scripts/evaluate_action_model.py --checkpoint artifacts/action_model/best.pt --split test
+```
+
+Hyperparameter và embedding dimension nằm tại `configs/action_model_config.json`. Xem `docs/VIEC_BAN_CAN_LAM.md` để thực hiện đúng thứ tự.

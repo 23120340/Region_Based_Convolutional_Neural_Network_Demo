@@ -22,11 +22,37 @@ class VisionLogicTests(unittest.TestCase):
         self.assertIsNone(self.gate.update([self.detection("barrel")], ["pick_barrel"], self.zone, 100, 100))
         result = self.gate.update([self.detection("barrel")], ["pick_barrel"], self.zone, 100, 100)
         self.assertEqual(result.action, "pick_barrel")
+        self.assertTrue(result.is_expected)
 
-    def test_wrong_component_does_not_emit(self) -> None:
-        for _ in range(5):
+    def test_wrong_component_is_reported_for_fsm_validation(self) -> None:
+        result = None
+        for _ in range(3):
             result = self.gate.update([self.detection("spring")], ["pick_barrel"], self.zone, 100, 100)
-        self.assertIsNone(result)
+        self.assertIsNotNone(result)
+        self.assertEqual(result.action, "insert_spring")
+        self.assertFalse(result.is_expected)
+
+    def test_held_component_is_not_reemitted_after_acknowledgement(self) -> None:
+        barrel = self.detection("barrel")
+        for _ in range(3):
+            self.gate.update([barrel], ["pick_barrel"], self.zone, 100, 100)
+        self.gate.acknowledge()
+        results = [
+            self.gate.update([barrel], ["insert_spring"], self.zone, 100, 100)
+            for _ in range(5)
+        ]
+        self.assertTrue(all(result is None for result in results))
+
+    def test_new_component_emits_while_completed_part_remains_visible(self) -> None:
+        barrel = self.detection("barrel")
+        spring = self.detection("spring", (45, 45, 55, 55))
+        for _ in range(3):
+            self.gate.update([barrel], ["pick_barrel"], self.zone, 100, 100)
+        self.gate.acknowledge()
+        result = None
+        for _ in range(3):
+            result = self.gate.update([barrel, spring], ["insert_spring"], self.zone, 100, 100) or result
+        self.assertEqual(result.action, "insert_spring")
 
     def test_component_outside_zone_resets_dwell(self) -> None:
         inside = self.detection("barrel")

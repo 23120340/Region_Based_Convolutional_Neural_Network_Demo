@@ -51,6 +51,7 @@ class ComponentSuggestion:
     label: str
     confidence: float
     dwell_count: int
+    is_expected: bool
 
 
 class ComponentDwellGate:
@@ -66,9 +67,8 @@ class ComponentDwellGate:
             raise ValueError("dwell_frames phải >= 1")
         self.label_to_action = dict(label_to_action)
         self.dwell_frames = dwell_frames
-        self._candidate: tuple[str, str] | None = None
-        self._count = 0
-        self._emitted = False
+        self._counts: dict[str, int] = {}
+        self._latched_labels: set[str] = set()
         self._suggestion: ComponentSuggestion | None = None
 
     @property
@@ -76,9 +76,13 @@ class ComponentDwellGate:
         return self._suggestion
 
     def reset(self) -> None:
-        self._candidate = None
-        self._count = 0
-        self._emitted = False
+        self._counts.clear()
+        self._latched_labels.clear()
+        self._suggestion = None
+
+    def acknowledge(self) -> None:
+        """Clear the current UI suggestion without re-emitting a held component."""
+
         self._suggestion = None
 
     def update(
@@ -90,29 +94,42 @@ class ComponentDwellGate:
         frame_height: int,
     ) -> ComponentSuggestion | None:
         expected = set(expected_actions)
-        candidates = [
-            detection
-            for detection in detections
-            if self.label_to_action.get(detection.label) in expected
-            and zone.contains(detection.center, frame_width, frame_height)
-        ]
-        if not candidates:
-            self.reset()
+        best_by_label: dict[str, Detection] = {}
+        for detection in detections:
+            if detection.label not in self.label_to_action:
+                continue
+            if not zone.contains(detection.center, frame_width, frame_height):
+                continue
+            previous = best_by_label.get(detection.label)
+            if previous is None or detection.confidence > previous.confidence:
+                best_by_label[detection.label] = detection
+
+        active_labels = set(best_by_label)
+        for missing_label in set(self._counts) - active_labels:
+            self._counts.pop(missing_label, None)
+            self._latched_labels.discard(missing_label)
+            if self._suggestion is not None and self._suggestion.label == missing_label:
+                self._suggestion = None
+
+        newly_stable: list[Detection] = []
+        for label, detection in best_by_label.items():
+            self._counts[label] = self._counts.get(label, 0) + 1
+            if self._counts[label] >= self.dwell_frames and label not in self._latched_labels:
+                newly_stable.append(detection)
+
+        if not newly_stable:
             return None
 
-        detection = max(candidates, key=lambda item: item.confidence)
+        # Perception reports what it actually sees. Expectedness is metadata for
+        # the UI; only the FSM is allowed to decide PASS versus VIOLATION.
+        detection = max(newly_stable, key=lambda item: item.confidence)
         action = self.label_to_action[detection.label]
-        key = (action, detection.label)
-        if key != self._candidate:
-            self._candidate = key
-            self._count = 1
-            self._emitted = False
-            self._suggestion = None
-        else:
-            self._count += 1
-
-        if self._count < self.dwell_frames or self._emitted:
-            return None
-        self._emitted = True
-        self._suggestion = ComponentSuggestion(action, detection.label, detection.confidence, self._count)
+        self._latched_labels.add(detection.label)
+        self._suggestion = ComponentSuggestion(
+            action=action,
+            label=detection.label,
+            confidence=detection.confidence,
+            dwell_count=self._counts[detection.label],
+            is_expected=action in expected,
+        )
         return self._suggestion

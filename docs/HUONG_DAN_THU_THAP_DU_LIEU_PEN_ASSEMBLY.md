@@ -530,7 +530,7 @@ Tiêu chí đề xuất:
 - Kiểm tra riêng recall của `insert_spring`, `screw_cap` và `test_click`.
 - Test set phải chứa người hoặc buổi quay không có trong train.
 
-Các script trích ViT feature và train LSTM sẽ được hoàn thiện sau khi dataset video thật đã sẵn sàng.
+Các script trích ViT feature, train và đánh giá LSTM đã có sẵn. Sau khi video và annotation thật sẵn sàng, chạy lần lượt `scripts/extract_spatial_features.py`, `scripts/train_action_model.py` và `scripts/evaluate_action_model.py`.
 
 ---
 
