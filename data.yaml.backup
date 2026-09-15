@@ -1,0 +1,13 @@
+train: ../train/images
+val: ../valid/images
+test: ../test/images
+
+nc: 6
+names: ['Case', 'Hand', 'Left_Earbud', 'Left_Slot', 'Right_Earbud', 'Right_Slot']
+
+roboflow:
+  workspace: traigautchin1983-gmail-com
+  project: case-earbud-empty-slot
+  version: 3
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/traigautchin1983-gmail-com/case-earbud-empty-slot/dataset/3

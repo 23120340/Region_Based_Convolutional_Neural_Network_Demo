@@ -1,0 +1,57 @@
+# Git ignore file for YOLOv8 training project
+
+# Large binary assets
+*.mp4
+*.avi
+*.mov
+*.zip
+*.pt
+*.weights
+*.onnx
+*.engine
+*.bin
+
+# Training outputs and logs
+runs/
+!runs/.gitkeep
+runs/**
+
+# Local dataset images and labels (keep only source structure if needed)
+train/images/
+valid/images/
+test/images/
+train/labels/
+valid/labels/
+test/labels/
+
+# Cache files
+**/__pycache__/
+*.pyc
+*.pyo
+**/.cache/
+*.cache
+
+# Python virtual environment
+venv/
+env/
+.env
+
+# IDE settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
+
+# Local workspace metadata
+.claude/
+
+# Keep structure but ignore large files
+!.gitkeep
