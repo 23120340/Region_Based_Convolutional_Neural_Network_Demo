@@ -1,17 +1,17 @@
-# Earbud Detection with YOLOv8
+# Dự án phát hiện Earbud bằng YOLOv8
 
-This project trains and runs a custom YOLOv8 object detection model for detecting earbuds inside a charging case, including the case body, hands, earbuds, and empty slots.
+Dự án này huấn luyện và chạy mô hình YOLOv8 để phát hiện tai nghe trong hộp sạc, bao gồm thân hộp, tay người, tai nghe trái/phải và các khe trống trong hộp.
 
-## Overview
+## Tổng quan
 
-The model is designed for:
-- detecting the charging case
-- detecting the human hand
-- identifying left and right earbuds
-- identifying empty slots in the case
-- running inference on local video files
+Mô hình được thiết kế để:
+- phát hiện vỏ hộp sạc
+- phát hiện tay người
+- nhận diện tai nghe trái và phải
+- nhận diện khe trống trong hộp
+- chạy inference trên video local
 
-## Supported classes
+## Các lớp đối tượng hỗ trợ
 - Case
 - Hand
 - Left_Earbud
@@ -19,13 +19,13 @@ The model is designed for:
 - Right_Earbud
 - Right_Slot
 
-## Project status
-- Model family: YOLOv8
-- Default backbone: `yolov8n.pt`
-- Best reported mAP50: around `0.830`
-- Training workflow: local training with Ultralytics YOLOv8
+## Trạng thái dự án
+- Dòng mô hình: YOLOv8
+- Backbone mặc định: `yolov8n.pt`
+- mAP50 tốt nhất ghi nhận: khoảng `0.830`
+- Quy trình huấn luyện: huấn luyện local bằng Ultralytics YOLOv8
 
-## Repository structure
+## Cấu trúc thư mục
 ```text
 RNN/
 ├── README.md
@@ -54,39 +54,39 @@ RNN/
 └── .gitignore
 ```
 
-## Requirements
+## Yêu cầu môi trường
 
-Install dependencies:
+Cài đặt các thư viện cần thiết:
 ```bash
 pip install ultralytics opencv-python pandas numpy
 ```
 
-If you want to use a GPU-enabled environment, make sure CUDA is installed and available to PyTorch.
+Nếu dùng GPU NVIDIA, hãy đảm bảo driver và CUDA đã được cài đặt đúng cách.
 
-## Quick start
+## Bắt đầu nhanh
 
-### 1) Train model
+### 1) Huấn luyện mô hình
 ```bash
 python train_local.py
 ```
 
-### 2) Run a quick test
+### 2) Chạy test nhanh
 ```bash
 python quick_test.py
 ```
 
-### 3) Run inference on a video
+### 3) Chạy inference trên video
 ```bash
 python run_inference_improved.py
 ```
 
-### 4) Evaluate the model
+### 4) Đánh giá mô hình
 ```bash
 python test_model.py --model runs/train/earbud_detection/weights/best.pt --test-set
 ```
 
-## Dataset format
-The dataset follows YOLO format structure:
+## Định dạng dataset
+Dataset tuân theo định dạng YOLO:
 ```text
 train/
   images/
@@ -99,29 +99,29 @@ test/
   labels/
 ```
 
-The annotations are standard YOLO `.txt` label files with normalized coordinates.
+File annotation là file `.txt` theo chuẩn YOLO với tọa độ chuẩn hóa.
 
-## Key scripts
-- `train_local.py`: local training entry point
-- `quick_test.py`: fast validation on sample images
-- `test_model.py`: full evaluation and image/video testing
-- `run_inference_improved.py`: detection on a supplied video
-- `merge_slots.py`: merges or normalizes slot annotations
-- `cleanup.py`: cleanup utilities for dataset preparation
+## Các script quan trọng
+- `train_local.py`: điểm vào chính để huấn luyện local
+- `quick_test.py`: kiểm tra nhanh trên một vài ảnh mẫu
+- `test_model.py`: đánh giá toàn bộ và test ảnh/video
+- `run_inference_improved.py`: chạy nhận diện trên video đầu vào
+- `merge_slots.py`: gom hoặc chuẩn hóa dữ liệu khe trống
+- `cleanup.py`: công cụ dọn dữ liệu và chuẩn bị dataset
 
-## Usage notes
-- Update `data.yaml` if your dataset paths or class names are changed.
-- For larger or more accurate models, switch from `yolov8n.pt` to `yolov8s.pt`, `yolov8m.pt`, or larger variants.
-- If you run out of VRAM, reduce `batch` size or image resolution in the training script.
+## Ghi chú khi sử dụng
+- Cập nhật `data.yaml` nếu thay đổi đường dẫn dataset hoặc tên lớp.
+- Nếu muốn model lớn hơn và chính xác hơn, hãy chuyển từ `yolov8n.pt` sang `yolov8s.pt`, `yolov8m.pt` hoặc lớn hơn.
+- Nếu thiếu VRAM, hãy giảm `batch` hoặc kích thước ảnh trong file training.
 
-## Training history
-- v1: initial model baseline
-- v2_fast: faster training optimization
-- v3_fixed: improved empty-slot and detection behavior
+## Lịch sử huấn luyện
+- v1: baseline ban đầu
+- v2_fast: tối ưu tốc độ huấn luyện
+- v3_fixed: cải thiện phát hiện khe trống và độ chính xác
 
-## More details
-For a full training checklist, troubleshooting guide, and example commands, see [README_TRAINING.md](README_TRAINING.md).
+## Tham khảo thêm
+Xem [README_TRAINING.md](README_TRAINING.md) để có hướng dẫn từng bước, cách sửa lỗi và câu lệnh thực tế.
 
-## License
-The project code is provided as-is for research and demo usage. Please check the dataset source license before any public deployment or commercial use.
+## Giấy phép
+Mã nguồn dự án được cung cấp theo dạng “as-is” cho mục đích nghiên cứu và demo. Hãy kiểm tra giấy phép của dataset trước khi triển khai công khai hoặc thương mại hóa.
 

@@ -1,14 +1,14 @@
-# Hướng dẫn chi tiết Train/Test YOLOv8 cho Earbud Detection
+# Hướng dẫn chi tiết train và test mô hình YOLOv8
 
 ## 1. Mục tiêu dự án
 
 Dự án này dùng YOLOv8 để phát hiện:
-- vỏ hộp sạc earbud
+- vỏ hộp sạc tai nghe
 - tay người
-- tai nghe trái/phải
-- khe trống trong hộp
+- tai nghe trái và phải
+- vị trí khe trống trong hộp
 
-Mục tiêu chính là nhận diện đúng vị trí và trạng thái của từng đối tượng trong video hoặc ảnh.
+Mục tiêu là nhận diện đúng vị trí và trạng thái của từng đối tượng trên ảnh hoặc video.
 
 ## 2. Cấu trúc thư mục dataset
 
@@ -37,7 +37,7 @@ C:\RNN\
 └── runs/
 ```
 
-Các class chuẩn của dữ liệu:
+Các lớp dữ liệu chuẩn:
 - Case
 - Hand
 - Left_Earbud
@@ -47,23 +47,23 @@ Các class chuẩn của dữ liệu:
 
 ## 3. Cài đặt môi trường
 
-Từ thư mục dự án:
+Từ thư mục dự án, chạy:
 
 ```bash
 pip install ultralytics opencv-python pandas numpy
 ```
 
-Nếu dùng GPU NVIDIA, hãy đảm bảo driver và CUDA đã được cài đặt đúng cách.
+Nếu máy có GPU NVIDIA, hãy chắc chắn driver và CUDA đã được cài đặt đúng.
 
-## 4. Huấn luyện model
+## 4. Huấn luyện mô hình
 
-Chạy:
+Chạy lệnh:
 
 ```bash
 python train_local.py
 ```
 
-Một số tham số được định nghĩa trong file `train_local.py`, ví dụ:
+Một số tham số quan trọng trong file `train_local.py` như:
 - `epochs=100`
 - `imgsz=640`
 - `batch=16`
@@ -75,7 +75,7 @@ model = YOLO('yolov8s.pt')
 # hoặc yolov8m.pt, yolov8l.pt
 ```
 
-Kết quả training được lưu trong:
+Kết quả huấn luyện sẽ được lưu trong thư mục:
 ```text
 runs/train/
 └── ...
@@ -99,13 +99,13 @@ Hoặc chỉ định model cụ thể:
 python quick_test.py runs/train/earbud_detection/weights/best.pt
 ```
 
-## 6. Đánh giá chi tiết trên dataset test
+## 6. Đánh giá chi tiết trên tập test
 
 ```bash
 python test_model.py --model runs/train/earbud_detection/weights/best.pt --test-set
 ```
 
-Chỉ số hiển thị gồm:
+Các chỉ số hiển thị gồm:
 - mAP50
 - mAP50-95
 - Precision
@@ -120,17 +120,17 @@ python test_model.py --model runs/train/earbud_detection/weights/best.pt --sourc
 
 ## 8. Chạy inference trên video
 
-Phương án 1: dùng script local:
+Cách 1: dùng script local
 ```bash
 python run_inference_improved.py
 ```
 
-Phương án 2: dùng script cũ / tùy chỉnh:
+Cách 2: dùng script cũ hoặc tùy chỉnh
 ```bash
 python run_inference_video.py
 ```
 
-Nếu cần chỉ định model và video bằng command line, hãy kiểm tra nội dung script để chỉnh đường dẫn phù hợp.
+Nếu muốn truyền đường dẫn model và video bằng lệnh, hãy kiểm tra nội dung script để sửa theo nhu cầu.
 
 ## 9. Gợi ý tối ưu hiệu suất
 
@@ -146,31 +146,31 @@ Nếu cần chỉ định model và video bằng command line, hãy kiểm tra n
 
 ## 10. Xử lý sự cố
 
-### Out of Memory
+### Lỗi thiếu bộ nhớ (Out of Memory)
 - giảm `batch` từ 16 xuống 8 hoặc 4
 - giảm `imgsz` từ 640 xuống 416
 
-### Training chậm
+### Huấn luyện chậm
 - dùng GPU nếu có
 - giảm số worker trong script
 - tắt các biểu đồ không cần thiết nếu cần tối ưu tốc độ
 
-### Model sai nhầm lớp
+### Model nhầm lớp
 - kiểm tra `data.yaml`
-- kiểm tra `labels` và annotation
+- kiểm tra file annotation trong `labels`
 - xem `confusion_matrix.png`
 
 ## 11. Mẹo thực tế
 
-- Luôn kiểm tra dataset bằng `train/labels` và `valid/labels`
-- Nên bắt đầu với `yolov8n.pt` để debug pipeline trước
-- Sau khi model ổn, chuyển sang model lớn hơn để cải thiện mAP
-- Lưu lại `best.pt` để dùng cho inference và deploy
+- Luôn kiểm tra dữ liệu trong `train/labels` và `valid/labels`
+- Nên bắt đầu với `yolov8n.pt` trước để debug pipeline
+- Sau khi pipeline ổn, chuyển sang model lớn hơn để cải thiện mAP
+- Lưu lại `best.pt` để dùng cho inference và triển khai
 
 ## 12. Tài liệu tham khảo nhanh
 
 - `README.md` - tóm tắt dự án
-- `data.yaml` - cấu hình dataset và label names
+- `data.yaml` - cấu hình dataset và tên lớp
 - `train_local.py` - script huấn luyện chính
 - `quick_test.py` - kiểm tra nhanh
 - `test_model.py` - đánh giá và inference
@@ -178,5 +178,5 @@ Nếu cần chỉ định model và video bằng command line, hãy kiểm tra n
 
 ## 13. Kết luận
 
-Đây là một project YOLOv8 hoàn chỉnh cho bài toán phát hiện earbud trong hộp sạc, phù hợp để train local, test nhanh, và chạy inference trên ảnh/video mà không cần phụ thuộc vào API bên ngoài.
+Đây là một dự án YOLOv8 hoàn chỉnh cho bài toán phát hiện tai nghe trong hộp sạc, phù hợp để huấn luyện local, test nhanh và chạy inference trên ảnh/video mà không cần phụ thuộc API bên ngoài.
 
