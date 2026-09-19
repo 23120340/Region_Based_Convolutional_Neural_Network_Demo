@@ -6,10 +6,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from pen_assembly.config import load_config
-from pen_assembly.fsm import ConfigurableAssemblyTracker
-from pen_assembly.paths import DEFAULT_CONFIG
-from pen_assembly.scenarios import SCENARIOS
+from assembly.config import load_config
+from assembly.fsm import ConfigurableAssemblyTracker
+from assembly.paths import DEFAULT_CONFIG
 
 
 class FsmTests(unittest.TestCase):
@@ -20,51 +19,46 @@ class FsmTests(unittest.TestCase):
         return [self.tracker.process(action) for action in actions]
 
     def test_correct_sequence_completes(self) -> None:
-        outcomes = self.run_actions(*SCENARIOS["correct"])
+        outcomes = self.run_actions("pick_case", "insert_earbud", "close_case")
         self.assertTrue(all(item.type == "PASS" for item in outcomes))
         self.assertTrue(self.tracker.is_complete)
         self.assertEqual(self.tracker.cycle_id, 1)
 
-    def test_missing_spring_is_rejected_without_state_change(self) -> None:
-        self.run_actions("pick_barrel", "insert_refill")
-        outcome = self.tracker.process("screw_cap")
-        self.assertEqual(outcome.type, "VIOLATION")
-        self.assertIn("quên lắp lò xo", outcome.message)
-        self.assertEqual(self.tracker.state, "S2_REFILL_INSERTED")
+    def test_earbud_fsm_workflow_and_violation(self) -> None:
+        # Violation test: insert_earbud before pick_case
+        bad_outcome = self.tracker.process("insert_earbud")
+        self.assertEqual(bad_outcome.type, "VIOLATION")
+        self.assertIn("Chưa đặt hộp sạc", bad_outcome.message)
 
-    def test_missing_refill_is_rejected(self) -> None:
-        self.run_actions("pick_barrel")
-        outcome = self.tracker.process("screw_cap")
-        self.assertEqual(outcome.type, "VIOLATION")
-        self.assertIn("chưa có ruột", outcome.message)
+        # Correct workflow
+        o1 = self.tracker.process("pick_case")
+        self.assertEqual(o1.type, "PASS")
+        self.assertEqual(self.tracker.state, "S1_CASE_READY")
 
-    def test_wrong_order_is_rejected(self) -> None:
-        self.run_actions("pick_barrel")
-        outcome = self.tracker.process("insert_spring")
-        self.assertEqual(outcome.type, "VIOLATION")
-        self.assertIn("Sai thứ tự", outcome.message)
+        o2 = self.tracker.process("insert_earbud")
+        self.assertEqual(o2.type, "PASS")
+        self.assertEqual(self.tracker.state, "S2_EARBUD_INSERTED")
 
-    def test_premature_test_is_rejected(self) -> None:
-        self.run_actions("pick_barrel", "insert_refill", "insert_spring")
-        outcome = self.tracker.process("test_click")
-        self.assertEqual(outcome.type, "VIOLATION")
-        self.assertEqual(self.tracker.state, "S3_SPRING_INSERTED")
+        o3 = self.tracker.process("close_case")
+        self.assertEqual(o3.type, "PASS")
+        self.assertEqual(self.tracker.state, "S3_COMPLETED")
+        self.assertTrue(self.tracker.is_complete)
 
     def test_sustained_action_is_not_a_violation(self) -> None:
-        self.tracker.process("pick_barrel")
-        repeated = self.tracker.process("pick_barrel")
+        self.tracker.process("pick_case")
+        repeated = self.tracker.process("pick_case")
         self.assertEqual(repeated.type, "INFO")
-        self.assertEqual(self.tracker.completed_steps, ["pick_barrel"])
+        self.assertEqual(self.tracker.completed_steps, ["pick_case"])
 
-    def test_new_pen_can_start_after_completion(self) -> None:
-        self.run_actions(*SCENARIOS["correct"])
-        outcome = self.tracker.process("pick_barrel")
+    def test_new_case_can_start_after_completion(self) -> None:
+        self.run_actions("pick_case", "insert_earbud", "close_case")
+        outcome = self.tracker.process("pick_case")
         self.assertEqual(outcome.type, "PASS")
         self.assertEqual(outcome.cycle_id, 2)
-        self.assertEqual(self.tracker.completed_steps, ["pick_barrel"])
+        self.assertEqual(self.tracker.completed_steps, ["pick_case"])
 
     def test_reset_returns_to_initial_state(self) -> None:
-        self.run_actions("pick_barrel", "insert_refill")
+        self.run_actions("pick_case", "insert_earbud")
         outcome = self.tracker.reset()
         self.assertEqual(outcome.type, "RESET")
         self.assertEqual(self.tracker.state, "S0_IDLE")
@@ -73,4 +67,6 @@ class FsmTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
 

@@ -14,3 +14,8 @@ datasets/**/*.cache
 data/pen_actions/raw_videos/
 data/pen_actions/features/
 *.h5
+datasets/earbud_merged.zip
+datasets/earbud_merged/
+data/earbud_actions/raw_videos/
+data/earbud_actions/features/
+datasets/dataset_earbud/

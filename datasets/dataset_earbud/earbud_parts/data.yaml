@@ -1,0 +1,14 @@
+path: datasets/earbud_parts
+train: train/images
+val: valid/images
+test: test/images
+
+nc: 3
+names: ['Case', 'Earbud', 'Empty_Slot']
+
+roboflow:
+  workspace: traigautchin1983-gmail-com
+  project: case-earbud-empty-slot
+  version: dataset
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/traigautchin1983-gmail-com/case-earbud-empty-slot/dataset/dataset

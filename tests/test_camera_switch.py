@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import unittest
 from pathlib import Path
 
@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from pen_assembly.camera_app import next_camera_index
+from assembly.camera_app import next_camera_index
 
 
 class CameraSwitchTests(unittest.TestCase):
@@ -24,3 +24,4 @@ class CameraSwitchTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -1,4 +1,4 @@
-import csv
+﻿import csv
 import json
 import sys
 import tempfile
@@ -11,7 +11,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from pen_assembly.action_dataset import CachedActionWindowDataset
+from assembly.action_dataset import CachedActionWindowDataset
 
 
 class ActionDatasetTests(unittest.TestCase):
@@ -85,3 +85,4 @@ class ActionDatasetTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

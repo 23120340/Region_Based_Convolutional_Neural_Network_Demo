@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "project": "earbud_assembly_v1",
+  "initial_state": "S0_IDLE",
+  "completed_state": "S3_COMPLETED",
+  "idle_actions": ["idle", "uncertain"],
+  "actions": {
+    "idle": "Đang chờ",
+    "pick_case": "Đặt hộp sạc",
+    "insert_earbud": "Lắp tai nghe vào hộp",
+    "close_case": "Đóng nắp hộp sạc"
+  },
+  "workflow": [
+    {"state": "S1_CASE_READY", "action": "pick_case", "label": "Đặt hộp sạc vào vùng lắp"},
+    {"state": "S2_EARBUD_INSERTED", "action": "insert_earbud", "label": "Lắp tai nghe vào khe trống"},
+    {"state": "S3_COMPLETED", "action": "close_case", "label": "Đóng nắp hộp sạc hoàn tất"}
+  ],
+  "states": {
+    "S0_IDLE": {
+      "message": "Sẵn sàng: hãy đặt hộp sạc tai nghe vào vùng lắp.",
+      "allowed": {"pick_case": "S1_CASE_READY"},
+      "violations": {
+        "insert_earbud": "Chưa đặt hộp sạc vào vùng lắp mà đã thao tác tai nghe.",
+        "close_case": "Chưa có hộp sạc trên bàn thao tác."
+      }
+    },
+    "S1_CASE_READY": {
+      "message": "Đã có hộp sạc: hãy lắp tai nghe vào khe trống.",
+      "allowed": {"insert_earbud": "S2_EARBUD_INSERTED"},
+      "violations": {
+        "close_case": "Bỏ bước: chưa lắp tai nghe vào hộp sạc mà đã đóng nắp."
+      }
+    },
+    "S2_EARBUD_INSERTED": {
+      "message": "Đã lắp tai nghe vào hộp: hãy đóng nắp hộp sạc để hoàn tất.",
+      "allowed": {"close_case": "S3_COMPLETED"},
+      "violations": {
+        "pick_case": "Hộp sạc đã có trong vùng lắp ráp."
+      }
+    },
+    "S3_COMPLETED": {
+      "message": "Hoàn tất: tai nghe đã lắp ráp và cất vào hộp đúng quy trình. Có thể bắt đầu lượt mới.",
+      "allowed": {"pick_case": "S1_CASE_READY"},
+      "violations": {
+        "insert_earbud": "Chu trình đã hoàn tất; hãy lấy hộp sạc mới.",
+        "close_case": "Hộp sạc đã đóng hoàn tất."
+      }
+    }
+  }
+}

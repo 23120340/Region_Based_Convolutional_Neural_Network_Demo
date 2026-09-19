@@ -1,0 +1,4 @@
+video_id,person_id,session_id,split,start_time_s,end_time_s,action_name
+per1_01_correct_20260917_144650_001,per1,01,train,0.0000,3.5000,pick_case
+per1_01_correct_20260917_144650_001,per1,01,train,3.5000,8.0000,insert_earbud
+per1_01_correct_20260917_144650_001,per1,01,train,8.0000,13.7000,close_case

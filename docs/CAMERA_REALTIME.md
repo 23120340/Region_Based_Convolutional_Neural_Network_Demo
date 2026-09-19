@@ -58,6 +58,29 @@ Nếu máy có camera ở index lớn hơn 5:
 python scripts/run_camera.py --source 0 --max-camera-index 10
 ```
 
+### Chạy hệ thống giám sát lắp ráp tai nghe (Earbud Assembly)
+
+Để chuyển từ bài toán bút bi sang bài toán hộp tai nghe (Earbud), truyền hai cấu hình tương ứng:
+
+```powershell
+python scripts/run_camera.py `
+  --source 0 `
+  --camera-config configs/camera_earbud_config.json `
+  --fsm-config configs/earbud_fsm_config.json
+```
+
+Hệ thống sẽ tự động:
+1. Nạp checkpoint tai nghe đã huấn luyện tại `artifacts/training/earbud_detector/weights/best.pt` (hoặc open-vocabulary prompt nếu chưa có checkpoint).
+2. Phát hiện 3 lớp: `Case`, `Earbud`, `Empty_Slot`.
+3. Tự động ánh xạ phím tắt mô phỏng theo số bước của quy trình tai nghe:
+   - Phím `1`: `pick_case` (Đặt hộp sạc vào vùng lắp).
+   - Phím `2`: `insert_earbud` (Lắp tai nghe vào khe trống).
+   - Phím `3`: `close_case` (Đóng nắp hộp sạc).
+   - Phím `SPACE`: Xác nhận gợi ý tự động từ detector khi linh kiện ổn định trong WORK ZONE.
+   - Phím `R`: Reset chu trình về trạng thái ban đầu `S0_IDLE`.
+   - Phím `S`: Chụp ảnh màn hình lưu vào `artifacts/screenshots/`.
+   - Phím `Q` hoặc `Esc`: Thoát ứng dụng.
+
 ### Model ImageNet-1K dùng ở đâu?
 
 File `models/tf_model.h5` hiện có cấu trúc ViT-Base: patch 16×16, embedding 768 chiều, 12 encoder layer và classifier 1.000 lớp. Đây là trọng số pretrained tốt để khởi tạo bộ trích đặc trưng không gian cho action model ViT + LSTM.

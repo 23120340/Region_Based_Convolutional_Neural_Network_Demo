@@ -8,12 +8,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from pen_assembly.config import load_config
-from pen_assembly.fsm import ConfigurableAssemblyTracker
-from pen_assembly.model_contract import Prediction
-from pen_assembly.monitor import AssemblyMonitor, JsonlEventLogger
-from pen_assembly.paths import DEFAULT_CONFIG
-from pen_assembly.smoother import TemporalDebouncer
+from assembly.config import load_config
+from assembly.fsm import ConfigurableAssemblyTracker
+from assembly.model_contract import Prediction
+from assembly.monitor import AssemblyMonitor, JsonlEventLogger
+from assembly.paths import DEFAULT_CONFIG
+from assembly.smoother import TemporalDebouncer
 
 
 class MonitorTests(unittest.TestCase):
@@ -27,7 +27,7 @@ class MonitorTests(unittest.TestCase):
                 JsonlEventLogger(path),
             )
             outcomes = [
-                monitor.submit_prediction(Prediction("pick_barrel", 0.95))
+                monitor.submit_prediction(Prediction("pick_case", 0.95))
                 for _ in range(8)
             ]
             self.assertEqual(sum(item is not None for item in outcomes), 1)
@@ -38,4 +38,5 @@ class MonitorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
 

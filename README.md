@@ -1,134 +1,55 @@
-# Pen Assembly Monitor — MVP trước Hybrid ViT + LSTM
+# Dự án Giám sát Lắp ráp Hộp Tai nghe (Earbud Assembly Monitor)
 
-Đây là mô hình thu nhỏ để kiểm chứng **logic giám sát quy trình lắp ráp** trước khi có video, camera cố định và thiết bị PCB. MVP không giả vờ rằng một LSTM chưa huấn luyện có thể nhận diện hành động: đầu vào hiện tại là thao tác mô phỏng trên giao diện; đầu ra đi qua đúng pipeline `prediction -> debouncer -> FSM -> event log` sẽ dùng cho model thật sau này.
+Dự án này là hệ thống giám sát quy trình lắp ráp hộp tai nghe (Earbud) theo thời gian thực sử dụng camera và mô hình YOLO đã tinh chỉnh (fine-tuned). Hệ thống giúp theo dõi từng bước lắp ráp, cảnh báo thao tác lỗi, sai quy trình hoặc bỏ bước.
 
-## MVP đã làm được gì?
+## Tính năng
 
-- Theo dõi 5 bước: đặt thân bút → lắp ruột → lắp lò xo → vặn nắp → bấm thử.
-- Cảnh báo khi bỏ bước hoặc làm sai thứ tự; lỗi không làm FSM nhảy sang trạng thái mới.
-- Lọc dự đoán chập chờn theo cửa sổ 5 mẫu và chỉ phát một sự kiện cho một hành động ổn định.
-- Hiển thị checklist, trạng thái, bước tiếp theo và lịch sử sự kiện trên GUI.
-- Ghi bằng chứng dạng JSONL tại `artifacts/events.jsonl`.
-- Toàn bộ quy trình nằm trong `configs/pen_fsm_config.json`, không hard-code riêng cho bút trong engine.
+- Theo dõi quy trình 3 bước: Đặt hộp sạc -> Lắp tai nghe vào hộp -> Đóng nắp hộp.
+- Phát hiện các bất thường như quên lắp tai nghe mà đã đóng nắp, hoặc đóng nắp sớm.
+- Giao diện Live Camera kết hợp Bounding Box và dự đoán hành động theo thời gian thực.
+- Theo dõi trạng thái thông qua FSM (Finite State Machine) chống nhiễu (debouncer).
 
-## Chạy nhanh
+## Hướng dẫn sử dụng
 
-Yêu cầu duy nhất cho MVP là Python 3.10+; không cần cài PyTorch.
-
-```powershell
-python scripts/run_demo.py
-```
-
-Trên giao diện, bấm từng hành động để giả lập kết quả nhận diện từ camera. Có thể chạy sẵn các kịch bản **Đúng quy trình**, **Quên lò xo**, **Quên ruột** hoặc **Bấm thử quá sớm**.
-
-Chạy không cần giao diện:
+### 1. Chạy giám sát bằng Live Camera (Khuyên dùng)
+Bạn có thể chạy camera mặc định (ví dụ camera laptop hoặc camera USB) để nhận diện thời gian thực.
 
 ```powershell
-python scripts/simulate.py --scenario correct
-python scripts/simulate.py --scenario missing_spring
-python scripts/simulate.py --scenario missing_refill
-python scripts/simulate.py --scenario premature_test
+python scripts/run_earbud.py --mode camera --source 0
 ```
+- Nếu có nhiều camera, chạy lệnh `python scripts/run_earbud.py --list-cameras` để xem ID. Thay `--source 0` bằng `--source 1` tương ứng.
+- Có thể chạy kèm `--auto-advance` nếu muốn hệ thống tự chuyển bước sau một khoảng thời gian chờ (dwell time).
 
-Chạy kiểm thử:
+### 2. Chạy giao diện mô phỏng (GUI)
+Nếu bạn không có camera hoặc chỉ muốn kiểm tra logic của FSM, hãy dùng giao diện giả lập:
 
 ```powershell
-python -m unittest discover -s tests -v
+python scripts/run_earbud.py --mode gui
 ```
 
-## Chạy nhận diện trực tiếp bằng camera laptop
-
-Cài backend camera (trên máy hiện tại đã cài):
+### 3. Inference trên ảnh tĩnh
+Để chạy thử trên một thư mục ảnh hoặc một ảnh tĩnh:
 
 ```powershell
-python -m pip install -r requirements-camera.txt
+python scripts/run_earbud.py --mode infer --source đường_dẫn_ảnh
 ```
 
-Chạy camera số 0:
+## Các phím tắt trong chế độ Camera
 
-```powershell
-python scripts/run_camera.py --source 0
-```
+| Phím | Chức năng |
+| :--- | :--- |
+| **`Space`** | Xác nhận hành động hiện tại |
+| **`1`-`3`** | Chuyển thủ công từng bước (pick_case / insert_earbud / close_case) |
+| **`C`** | Đổi qua lại giữa các camera |
+| **`R`** | Đặt lại chu trình FSM |
+| **`S`** | Chụp màn hình (Lưu tại `artifacts/screenshots`) |
+| **`Q`/`ESC`** | Thoát |
 
-Liệt kê các camera đang kết nối và chọn camera USB, ví dụ camera số 1:
+## Cấu trúc thư mục (Earbud)
 
-```powershell
-python scripts/run_camera.py --list-cameras
-python scripts/run_camera.py --source 1
-```
-
-Lần chạy đầu, chương trình tải checkpoint `yolov8s-worldv2.pt`. Đặt bốn khay linh kiện ngoài khung vàng và đưa linh kiện đang thao tác vào **WORK ZONE**. Các phím điều khiển:
-
-- `Space`: xác nhận hành động được detector gợi ý.
-- `1`–`5`: xác nhận thủ công từng bước từ đặt thân đến bấm thử.
-- `C`: dò lại thiết bị và chuyển sang camera khả dụng tiếp theo khi chương trình đang chạy.
-- `R`: reset chu trình; `S`: chụp ảnh bằng chứng; `Q`: thoát.
-
-Có thể thử tự chuyển bốn bước dựa trên sự hiện diện của linh kiện:
-
-```powershell
-python scripts/run_camera.py --source 0 --auto-advance
-```
-
-`--auto-advance` chỉ là baseline thử nghiệm. Detector biết **vật gì đang hiện diện**, nhưng không thể chứng minh thao tác “đã cắm”, “đã vặn” hay “đã bấm”; vì vậy chế độ có Space là mặc định. Xem [docs/CAMERA_REALTIME.md](docs/CAMERA_REALTIME.md) để hiệu chỉnh, thu dataset và train model riêng.
-
-### Vai trò của model ImageNet-1K
-
-`models/tf_model.h5` là ViT-Base pretrained với embedding 768 chiều và classifier 1.000 lớp ImageNet. Model này hữu ích làm backbone/trích đặc trưng cho action model ViT + LSTM, nhưng không phải object detector và không tự sinh bounding box cho `barrel/refill/spring/cap`. Không truyền file `.h5` này vào tham số `--model` của `run_camera.py`; tham số đó nhận checkpoint YOLO `.pt`.
-
-## Bố trí mô hình vật lý nhỏ
-
-Đặt camera top-down và đánh dấu 5 vùng trên một tờ A4:
-
-```text
-[Thân bút] [Ruột bút] [Lò xo] [Nắp bút]
-
-             [Vùng lắp ráp]
-```
-
-Mỗi lượt quay cần giữ nguyên góc máy. Giai đoạn đầu nên quay 40 lượt đúng và ít nhất 20 lượt sai có chủ đích, chia train/validation/test **theo người hoặc video**, không chia ngẫu nhiên từng frame.
-
-## Ranh giới giữa MVP và Hybrid ViT + LSTM
-
-```text
-MVP mô phỏng
-Nút mô phỏng -> TemporalDebouncer -> ConfigurableAssemblyTracker -> JSONL/UI
-
-Camera zero-shot hiện tại
-Webcam -> YOLO-World boxes -> work-zone dwell -> xác nhận -> cùng FSM/log
-
-Khi có dữ liệu
-Camera -> ViT embedding -> LSTM action classifier -> TemporalDebouncer -> cùng FSM/UI
-```
-
-`src/pen_assembly/model_contract.py` là hợp đồng tích hợp action model. Model tương lai chỉ cần trả `Prediction(action, confidence)`; engine, cấu hình, UI và log không phải viết lại.
-
-Chỉ chuyển sang huấn luyện Hybrid ViT + LSTM sau khi:
-
-1. FSM vượt toàn bộ test kịch bản.
-2. Quy trình lắp bút và bộ nhãn đã được chốt.
-3. Có video đủ đa dạng và nhãn theo đoạn thời gian.
-4. Baseline trên tập test tách theo người đạt ngưỡng đã thống nhất (đề xuất Macro-F1 ≥ 0,85).
-
-Xem [docs/MVP_PEN_ASSEMBLY.md](docs/MVP_PEN_ASSEMBLY.md) để biết tiêu chí nghiệm thu và lộ trình chuyển sang camera/model thật.
-
-## Pipeline action recognition ViT + BiLSTM
-
-Sau khi có video đã gán nhãn, chạy lần lượt:
-
-```powershell
-# 1. Quay từng chu trình hoàn chỉnh
-python scripts/record_assembly_videos.py --source 0 --person person01 --session session01 --scenario correct
-
-# 2. Sao chép annotations_template.csv thành annotations.csv rồi gán thời gian
-# 3. Cache CLS embedding từ ViT frozen
-python scripts/extract_spatial_features.py
-
-# 4. Train BiLSTM
-python scripts/train_action_model.py
-
-# 5. Đánh giá duy nhất trên test split sau khi chốt model
-python scripts/evaluate_action_model.py --checkpoint artifacts/action_model/best.pt --split test
-```
-
-Hyperparameter và embedding dimension nằm tại `configs/action_model_config.json`. Xem `docs/VIEC_BAN_CAN_LAM.md` để thực hiện đúng thứ tự.
+- `configs/`
+  - `camera_earbud_config.json`: Cấu hình lớp (classes) và vùng hoạt động của YOLO.
+  - `earbud_fsm_config.json`: Cấu hình các trạng thái State Machine.
+  - `action_earbud_config.json`: Cấu hình cho model nhận diện hành động (Action model).
+- `src/assembly/`: Engine xử lý FSM, debouncer, vision, camera stream.
+- `artifacts/training/earbud_merged_detector/`: Nơi chứa trọng số model YOLO đã được fine-tune (`best.pt`).

@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import unittest
 from pathlib import Path
 
@@ -6,8 +6,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from pen_assembly.model_contract import Prediction
-from pen_assembly.smoother import TemporalDebouncer
+from assembly.model_contract import Prediction
+from assembly.smoother import TemporalDebouncer
 
 
 class DebouncerTests(unittest.TestCase):
@@ -50,4 +50,5 @@ class DebouncerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
 

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import json
@@ -18,9 +18,9 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from pen_assembly.action_config import load_action_model_config
-from pen_assembly.models.spatial_encoder import ViTSpatialEncoder
-from pen_assembly.paths import DEFAULT_ACTION_CONFIG, DEFAULT_ACTION_VIDEOS, DEFAULT_FEATURE_CACHE
+from assembly.action_config import load_action_model_config
+from assembly.models.spatial_encoder import ViTSpatialEncoder
+from assembly.paths import DEFAULT_ACTION_CONFIG, DEFAULT_ACTION_VIDEOS, DEFAULT_FEATURE_CACHE
 
 
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
@@ -36,7 +36,7 @@ def main() -> int:
         import cv2
         import numpy as np
     except ImportError as error:
-        raise SystemExit("Thiếu OpenCV hoặc NumPy; hãy cài requirements-ml.txt") from error
+        raise SystemExit("Thiáº¿u OpenCV hoáº·c NumPy; hÃ£y cÃ i requirements-ml.txt") from error
 
     parser = argparse.ArgumentParser(description="Extract and cache frozen ViT CLS embeddings from assembly videos")
     parser.add_argument("--videos-dir", type=Path, default=DEFAULT_ACTION_VIDEOS)
@@ -50,15 +50,15 @@ def main() -> int:
     config = load_action_model_config(args.config)
     videos = sorted(path for path in args.videos_dir.rglob("*") if path.suffix.lower() in VIDEO_EXTENSIONS)
     if not videos:
-        raise SystemExit(f"Không tìm thấy video trong {args.videos_dir}")
+        raise SystemExit(f"KhÃ´ng tÃ¬m tháº¥y video trong {args.videos_dir}")
     video_ids = [_video_id(path, args.videos_dir) for path in videos]
     duplicates = sorted({video_id for video_id in video_ids if video_ids.count(video_id) > 1})
     if duplicates:
-        raise SystemExit(f"Video ID bị trùng; hãy đổi tên file để duy nhất: {duplicates}")
+        raise SystemExit(f"Video ID bá»‹ trÃ¹ng; hÃ£y Ä‘á»•i tÃªn file Ä‘á»ƒ duy nháº¥t: {duplicates}")
     encoder = ViTSpatialEncoder(config.spatial.backbone, args.device, config.spatial.freeze)
     if encoder.embedding_dim != config.spatial.embedding_dim:
         raise SystemExit(
-            f"Backbone trả dim={encoder.embedding_dim}, config yêu cầu dim={config.spatial.embedding_dim}"
+            f"Backbone tráº£ dim={encoder.embedding_dim}, config yÃªu cáº§u dim={config.spatial.embedding_dim}"
         )
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -67,12 +67,12 @@ def main() -> int:
         feature_path = args.output_dir / f"{video_id}.npy"
         metadata_path = args.output_dir / f"{video_id}.json"
         if feature_path.exists() and metadata_path.exists() and not args.overwrite:
-            print(f"SKIP {video_id}: feature đã tồn tại")
+            print(f"SKIP {video_id}: feature Ä‘Ã£ tá»“n táº¡i")
             continue
 
         capture = cv2.VideoCapture(str(video_path))
         if not capture.isOpened():
-            print(f"WARN không mở được {video_path}")
+            print(f"WARN khÃ´ng má»Ÿ Ä‘Æ°á»£c {video_path}")
             continue
         source_fps = float(capture.get(cv2.CAP_PROP_FPS) or 30.0)
         sample_fps = min(config.spatial.sample_fps, source_fps)
@@ -94,7 +94,7 @@ def main() -> int:
         finally:
             capture.release()
         if not rgb_frames:
-            print(f"WARN video không có frame: {video_path}")
+            print(f"WARN video khÃ´ng cÃ³ frame: {video_path}")
             continue
 
         features = encoder.encode_images(rgb_frames, batch_size=args.batch_size).numpy().astype("float32")
@@ -117,3 +117,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 import unittest
 from pathlib import Path
 
@@ -6,7 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from pen_assembly.vision import ComponentDwellGate, Detection, NormalizedZone
+from assembly.vision import ComponentDwellGate, Detection, NormalizedZone
 
 
 class VisionLogicTests(unittest.TestCase):
@@ -70,3 +70,4 @@ class VisionLogicTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

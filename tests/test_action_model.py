@@ -9,20 +9,16 @@ import torch
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from pen_assembly.action_config import load_action_model_config
-from pen_assembly.models import PenAssemblyActionNet
+from assembly.action_config import load_action_model_config
+from assembly.models import PenAssemblyActionNet
 
 
 class ActionModelTests(unittest.TestCase):
-    def test_legacy_model_import_points_to_package_model(self) -> None:
-        legacy = importlib.import_module("models.pen_action_net")
-        self.assertIs(legacy.PenAssemblyActionNet, PenAssemblyActionNet)
-
     def test_project_action_config_is_valid(self) -> None:
-        config = load_action_model_config(ROOT / "configs" / "action_model_config.json")
+        config = load_action_model_config(ROOT / "configs" / "action_earbud_config.json")
         self.assertEqual(config.spatial.embedding_dim, 768)
         self.assertEqual(config.temporal.sequence_length, 16)
-        self.assertEqual(len(config.actions), 6)
+        self.assertEqual(len(config.actions), 4)
 
     def test_bilstm_uses_final_forward_and_backward_hidden_states(self) -> None:
         torch.manual_seed(7)
@@ -52,3 +48,4 @@ class ActionModelTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

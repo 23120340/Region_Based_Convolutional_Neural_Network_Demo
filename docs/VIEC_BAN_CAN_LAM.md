@@ -1,476 +1,224 @@
-# Việc bạn cần làm để hoàn thiện hệ thống nhận diện và kiểm tra lắp ráp bút
+﻿# Viá»‡c báº¡n cáº§n lÃ m Ä‘á»ƒ hoÃ n thiá»‡n há»‡ thá»‘ng nháº­n diá»‡n vÃ  kiá»ƒm tra quy trÃ¬nh láº¯p rÃ¡p
 
-## 1. Trạng thái dữ liệu hiện tại
+> Cáº­p nháº­t toÃ n diá»‡n ngÃ y: **08/09/2026**  
+> Dá»± Ã¡n Ã¡p dá»¥ng cho cáº£ hai bÃ i toÃ¡n: **Láº¯p rÃ¡p Há»™p tai nghe khÃ´ng dÃ¢y (Earbud Assembly)** vÃ  **Láº¯p rÃ¡p BÃºt bi (Pen Assembly)**.
 
-Ngày kiểm tra gần nhất: **07/09/2026**.
+---
 
-Repo hiện có:
+## 0. PhÃ¢n cÃ´ng vÃ  tráº¡ng thÃ¡i thá»±c hiá»‡n
 
-| Vị trí | Số ảnh | Trạng thái |
-|---|---:|---|
-| `raw/person01/session01` | 192 | Ảnh cũ có chữ giao diện trên ảnh; không nên dùng làm dữ liệu chính |
-| `raw/person01/session02` | 125 | Ảnh sạch hơn, có thể chọn lọc để gán nhãn |
-| `images/train` | 0 | Chưa tạo split chính thức |
-| `images/val` | 0 | Chưa tạo split chính thức |
-| `images/test` | 0 | Chưa tạo split chính thức |
-| Tổng ảnh raw | 317 | Chưa có bounding box |
+KÃ½ hiá»‡u quy Æ°á»›c:
+- **ÄÃƒ LÃ€M (Ká»¹ sÆ°/Há»‡ thá»‘ng)**: Pháº§n ká»¹ thuáº­t, mÃ£ nguá»“n, script, cáº¥u hÃ¬nh vÃ  unit test Ä‘Ã£ hoÃ n thiá»‡n vÃ  kiá»ƒm tra tá»± Ä‘á»™ng trong repository.
+- **Báº N ÄÃƒ LÃ€M**: Dá»¯ liá»‡u, cáº¥u hÃ¬nh vÃ  káº¿t quáº£ thá»±c nghiá»‡m báº¡n Ä‘Ã£ Ä‘Æ°a vÃ o dá»± Ã¡n.
+- **Báº N Cáº¦N LÃ€M**: Cáº§n camera, váº­t tháº­t, thao tÃ¡c gÃ¡n nhÃ£n trÃªn CVAT/Roboflow hoáº·c quyáº¿t Ä‘á»‹nh nghiá»‡p vá»¥ cá»§a báº¡n; há»‡ thá»‘ng khÃ´ng thá»ƒ tá»± Ä‘oÃ¡n thay báº¡n.
+- **MÃŒNH LÃ€M SAU**: MÃ¬nh sáº½ tiáº¿p tá»¥c ngay khi báº¡n Ä‘Æ°a dá»¯ liá»‡u Ä‘Ã£ lÃ m sáº¡ch vÃ o Ä‘Ãºng thÆ° má»¥c.
 
-Thư mục `labels/` còn 61 file `.txt` rỗng từ lần chia thử trước. Chúng không phải annotation hoàn chỉnh và đã được thêm vào `.gitignore` để không bị đưa nhầm lên GitHub. **Không chạy train detector trước khi hoàn thành mục 3.** Script train đã được chặn để tránh tạo model sai.
-
-Checkpoint `artifacts/training/pen_parts_detector-3/weights/best.pt` là kết quả thử cũ với precision/recall/mAP bằng 0 và không được dùng làm model cuối. Thư mục `artifacts/` cũng không được push lên GitHub.
-
-## 2. Chuẩn bị bàn và camera
-
-Bạn cần chuẩn bị:
-
-- 2–3 cây bút bấm cùng mẫu và cùng màu trong vòng thử đầu.
-- Bốn khay: `barrel`, `refill`, `spring`, `cap`.
-- Một WORK ZONE ở giữa, không chồng lên các khay.
-- Nền trơn tương phản với ruột và lò xo.
-- Camera cố định; ưu tiên top-down, nếu dùng camera laptop thì nghiêng khoảng 45°.
-- Ánh sáng đều từ hai phía nếu có thể.
-
-Kiểm tra camera:
-
-```powershell
-cd "E:\Professional documents\Internship\RBCNN_Demo"
-python scripts/run_camera.py --list-cameras
-python scripts/run_camera.py --source 0
-```
-
-Nếu gắn webcam ngoài, chọn index được liệt kê hoặc nhấn `C` trong cửa sổ camera để chuyển thiết bị.
-
-Không thay đổi vị trí camera giữa các clip của cùng một `session`. Nếu camera, nền hoặc ánh sáng thay đổi đáng kể, tăng session: `session01`, `session02`, ...
-
-## 3. Việc ưu tiên số 1: chọn ảnh raw và gán bounding box
-
-### 3.1. Tạo project annotation
-
-Dùng CVAT hoặc Label Studio, tạo đúng năm lớp theo đúng ID:
-
-| ID | Tên lớp | Khi nào dùng |
-|---:|---|---|
-| 0 | `barrel` | Thân dưới đang tháo rời |
-| 1 | `refill` | Ruột/mực bút |
-| 2 | `spring` | Lò xo |
-| 3 | `cap` | Nắp hoặc thân trên |
-| 4 | `assembled_pen` | Cây bút đã hoàn chỉnh |
-
-Trước mắt chọn khoảng 20–30 ảnh rõ từ `session02` để làm pilot và upload lên CVAT:
-
-```text
-datasets/pen_parts/raw/person01/session02/
-```
-
-Không upload toàn bộ `session01` làm dataset chính vì ảnh ở session này có chữ điều khiển nằm trong hình. Không cần xóa ảnh; chỉ không chọn chúng khi tạo split cuối.
-
-### 3.2. Quy tắc khoanh box
-
-1. Box ôm sát phần nhìn thấy của vật thể.
-2. Không đưa cả bàn tay vào box linh kiện.
-3. Một ảnh có nhiều linh kiện thì gán đủ tất cả linh kiện nhìn thấy rõ.
-4. Vật bị che một phần nhưng vẫn xác định được thì vẫn gán.
-5. Không gán `assembled_pen` khi bút chưa đủ ruột, lò xo và nắp.
-6. Không gán các bộ phận đã nằm hoàn toàn bên trong bút và không còn nhìn thấy.
-7. Ảnh thật sự không có linh kiện mới được để label rỗng.
-
-### 3.3. Xuất và đặt file nhãn
-
-Xuất theo **YOLO detection format**. Mỗi ảnh phải có file `.txt` cùng tên:
-
-```text
-images/train/pen_001.jpg
-labels/train/pen_001.txt
-```
-
-Mỗi dòng label:
-
-```text
-class_id x_center y_center width height
-```
-
-Ví dụ:
-
-```text
-0 0.512500 0.608333 0.312500 0.120833
-2 0.421875 0.554167 0.043750 0.062500
-```
-
-Tất cả tọa độ được chuẩn hóa trong `[0, 1]`.
-
-### 3.4. Kiểm tra trước khi train
-
-```powershell
-python scripts/validate_detection_dataset.py
-```
-
-Chỉ được đi tiếp khi cuối báo cáo là:
-
-```text
-Total bounding boxes: lớn hơn 0
-Trainable: YES
-```
-
-Kiểm tra thêm rằng cả năm lớp đều có box. Nếu `spring: 0` hoặc lớp nào đó bằng 0, phải gán/thu thêm ảnh lớp đó.
-
-## 4. Thu thêm ảnh detection đúng cách
-
-317 ảnh raw hiện có mới đến từ một người và hai session. Sau khi loại ảnh trùng, ảnh có chữ và ảnh quá mờ, mục tiêu vòng đầu vẫn nên có khoảng **250–400 ảnh đã gán nhãn**, ưu tiên nhiều instance của `spring` và `refill`.
-
-### 4.1. Hiểu đúng bước capture
-
-`capture_detection_images.py` chỉ chụp và lưu ảnh `.jpg`; bước này chưa tạo bounding box. Sau khi chụp xong, bạn upload ảnh lên CVAT, vẽ Rectangle rồi xuất nhãn YOLO `.txt`.
-
-Luồng đúng:
-
-```text
-Camera -> chụp JPG theo từng session -> kiểm tra và loại ảnh hỏng
-       -> gắn bounding box bằng CVAT -> xuất YOLO
-       -> chia theo session thành train/val/test -> chạy validator -> train
-```
-
-Không đưa ảnh mới chưa gán nhãn thẳng vào `images/train` rồi tạo file `.txt` rỗng. YOLO sẽ hiểu nhầm đó là ảnh background.
-
-### 4.2. Chuẩn bị trước khi chụp
-
-1. Lau ống kính và cố định camera; không cầm camera bằng tay khi chụp.
-2. Ưu tiên camera nhìn từ trên xuống. Nếu chỉ dùng camera laptop, nghiêng khoảng 45° và giữ nguyên góc trong cả session.
-3. Dùng nền trơn tương phản: không dùng nền trắng nếu ruột/lò xo quá khó nhìn.
-4. Bật ánh sáng đều, tránh bóng đổ mạnh và phản chiếu trên lò xo.
-5. Đặt linh kiện trong vùng camera nhìn rõ nhưng không để chúng chạm mép ảnh.
-6. Chuẩn bị ít nhất: thân bút, ruột, lò xo, nắp/thân trên và một bút hoàn chỉnh.
-
-Mỗi khi đổi người, ngày chụp, camera, góc máy, nền hoặc điều kiện ánh sáng đáng kể, hãy tạo `session` mới. Không trộn ảnh các session vào một thư mục.
-
-### 4.3. Kiểm tra camera và chọn đúng index
-
-Liệt kê camera đang kết nối:
-
-```powershell
-cd "E:\Professional documents\Internship\RBCNN_Demo"
-python scripts/run_camera.py --list-cameras
-```
-
-Nếu kết quả là `Camera khả dụng: 0, 1`, thường `0` là camera laptop và `1` là webcam gắn ngoài. Hãy thử đúng index trước khi bắt đầu session.
-
-### 4.4. Lệnh chụp một session
-
-Ví dụ chụp bằng camera laptop:
-
-```powershell
-python scripts/capture_detection_images.py `
-  --camera 0 `
-  --output datasets/pen_parts/raw/person01/session01 `
-  --width 1280 `
-  --height 720
-```
-
-Ví dụ dùng webcam ngoài và không lật gương:
-
-```powershell
-python scripts/capture_detection_images.py `
-  --camera 1 `
-  --output datasets/pen_parts/raw/person01/session02 `
-  --width 1280 `
-  --height 720 `
-  --no-mirror
-```
-
-Phím điều khiển:
-
-| Phím | Chức năng |
-|---|---|
-| `Space` | Lưu một ảnh JPG |
-| `Q` hoặc `Esc` | Kết thúc session |
-
-Dòng chữ `SPACE save...` chỉ nằm trên cửa sổ xem trước, không được ghi vào ảnh dataset. Tên ảnh chứa thời gian đến microsecond nên chạy lại script không ghi đè ảnh cũ.
-
-Nếu camera không hỗ trợ đúng `1280×720`, cửa sổ sẽ hiển thị độ phân giải thực tế mà camera trả về. Chất lượng và độ nét quan trọng hơn việc ép đúng một độ phân giải.
-
-### 4.5. Cách chụp trong một session
-
-Một session nên có khoảng 50–80 ảnh. Trước mỗi lần nhấn `Space`, thay đổi ít nhất một yếu tố: vị trí, hướng xoay, khoảng cách, số linh kiện hoặc mức tay che.
-
-Thứ tự đề xuất:
-
-1. **Linh kiện riêng lẻ — 20 ảnh:** mỗi lớp `barrel`, `refill`, `spring`, `cap` khoảng 5 ảnh; xoay ngang, dọc và chéo.
-2. **Nhiều linh kiện — 15 ảnh:** đặt 2–4 linh kiện trong cùng ảnh, tách nhau đủ để nhìn rõ.
-3. **Tay cầm linh kiện — 15 ảnh:** tay che khoảng 20%, 35% và tối đa khoảng 50%; vật thể vẫn phải nhận dạng được.
-4. **Bút hoàn chỉnh — 10 ảnh:** thay đổi góc xoay và vị trí cho lớp `assembled_pen`.
-5. **Ảnh âm tính — 5 đến 10 ảnh:** bàn trống, chỉ có tay hoặc các vật gây nhầm như kẹp giấy, bút chì và dây nhỏ. Các ảnh này sau này mới được để label rỗng.
-
-Khi chụp lò xo và ruột bút:
-
-- Không đặt quá xa camera khiến vật chỉ còn vài pixel.
-- Dùng nền tương phản và kiểm tra ảnh không bị nhòe.
-- Chụp cả khi nằm riêng, trong lòng bàn tay và cạnh thân bút.
-- Không chụp hàng chục ảnh liên tiếp khi đồ vật gần như đứng yên.
-
-### 4.6. Kế hoạch tối thiểu cho năm session
-
-| Session | Nội dung chính | Split dự kiến |
+| Tráº¡ng thÃ¡i | Háº¡ng má»¥c cÃ´ng viá»‡c | Chi tiáº¿t ká»¹ thuáº­t |
 |---|---|---|
-| `person01/session01` | Ánh sáng và góc máy chuẩn | Train |
-| `person01/session02` | Thay nhẹ vị trí/góc camera | Train |
-| `person01/session03` | Nhiều tình huống tay che và vật gây nhầm | Train |
-| `person01/session04` | Quay riêng, không lấy frame gần session train | Validation |
-| `person02/session01` | Người hoặc ngày khác, giữ kín để đánh giá | Test |
+| **Báº N ÄÃƒ LÃ€M** | Chuáº©n bá»‹ dataset tai nghe | Cung cáº¥p 151 áº£nh, 245 bounding box chia sáºµn 3 split (`datasets/earbud_parts`) |
+| **Báº N ÄÃƒ LÃ€M** | Táº¡o cáº¥u hÃ¬nh FSM, camera vÃ  action | Táº¡o `earbud_fsm_config.json`, `camera_earbud_config.json`, `action_earbud_config.json` |
+| **Báº N ÄÃƒ LÃ€M** | Huáº¥n luyá»‡n thá»­ baseline detector | Train YOLOv8 thÃ nh cÃ´ng táº¡i `artifacts/training/earbud_detector/weights/best.pt` |
+| **ÄÃƒ LÃ€M** | Sá»­a lá»—i chÃ­nh táº£ thÆ° má»¥c | Äá»•i `datasets/earbub_parts` thÃ nh `datasets/earbud_parts`, sá»­a Ä‘Æ°á»ng dáº«n trong `data.yaml` |
+| **ÄÃƒ LÃ€M** | Tá»± Ä‘á»™ng Ä‘áº·t tÃªn model detector | NÃ¢ng cáº¥p `scripts/train_detector.py` tá»± nháº­n diá»‡n dá»¯ liá»‡u earbud Ä‘á»ƒ lÆ°u vÃ o `earbud_detector` |
+| **ÄÃƒ LÃ€M** | Tá»•ng quÃ¡t hÃ³a phÃ­m táº¯t camera | PhÃ­m sá»‘ `1..N` tá»± Ä‘á»™ng Ã¡nh xáº¡ theo quy trÃ¬nh FSM (tai nghe dÃ¹ng 1â€“3, bÃºt dÃ¹ng 1â€“5) |
+| **ÄÃƒ LÃ€M** | Má»Ÿ rá»™ng script quay video hÃ nh Ä‘á»™ng | `scripts/record_assembly_videos.py` há»— trá»£ `--project earbud` vÃ  ká»‹ch báº£n linh hoáº¡t |
+| **ÄÃƒ LÃ€M** | Bá»• sung hÃ m kiá»ƒm tra khÃ´ng gian hÃ¬nh há»c | Bá»• sung `is_inside`, `overlap_ratio_with`, `contains_point` trong `src/assembly/vision.py` |
+| **ÄÃƒ LÃ€M** | Kiá»ƒm thá»­ tá»± Ä‘á»™ng toÃ n diá»‡n | ToÃ n bá»™ 41/41 unit test Ä‘áº¡t `OK`, kiá»ƒm tra cáº£ FSM tai nghe, FSM bÃºt vÃ  hÃ¬nh há»c |
+| **Báº N Cáº¦N LÃ€M** | Sá»­a lá»—i nhÃ£n vÃ  khá»­ rÃ² rá»‰ dataset | Xá»­ lÃ½ 56 áº£nh rá»—ng, xÃ³a box lá»—i/trÃ¹ng, quay session má»›i Ä‘á»™c láº­p cho val vÃ  test |
+| **Báº N Cáº¦N LÃ€M** | Chá»‘t quyáº¿t Ä‘á»‹nh thiáº¿t káº¿ FSM | Chá»n láº¯p 1 tai nghe hay kiá»ƒm tra Ä‘á»§ cáº£ 2 tai nghe (trÃ¡i vÃ  pháº£i) |
+| **Báº N Cáº¦N LÃ€M** | Quay video hÃ nh Ä‘á»™ng cÃ³ timestamp | Quay cÃ¡c chu trÃ¬nh tai nghe báº±ng `record_assembly_videos.py` vÃ  gÃ¡n nhÃ£n thá»i gian |
+| **MÃŒNH LÃ€M SAU** | Huáº¥n luyá»‡n láº¡i detector chuáº©n | Khi cÃ³ dataset sáº¡ch, train láº¡i detector, Ä‘Ã¡nh giÃ¡ mAP chuáº©n xÃ¡c trÃªn test set Ä‘á»™c láº­p |
+| **MÃŒNH LÃ€M SAU** | TÃ­ch há»£p xÃ¡c thá»±c hÃ¬nh há»c nÃ¢ng cao | GhÃ©p Ä‘iá»u kiá»‡n Earbud náº±m bÃªn trong Case/Empty Slot vÃ o logic realtime |
 
-Nếu hiện chỉ có một người, hãy chụp test vào ngày khác và thay đổi nhẹ nền/ánh sáng. Không xem trước kết quả test liên tục để điều chỉnh model.
+---
 
-### 4.7. Kiểm tra ảnh ngay sau khi chụp
+## 1. ÄÃ¡nh giÃ¡ chuyÃªn sÃ¢u: Háº¡n cháº¿ cá»§a Dataset Tai nghe hiá»‡n táº¡i
 
-Đếm và mở thư mục vừa chụp:
+> [!WARNING]
+> **Káº¿t luáº­n cá»‘t lÃµi:** Dataset earbud **Ä‘á»§ Ä‘á»ƒ train thá»­ má»™t baseline**, nhÆ°ng **chÆ°a Ä‘á»§ sáº¡ch vÃ  Ä‘á»™c láº­p Ä‘á»ƒ Ä‘Ã¡nh giÃ¡ hoáº·c dÃ¹ng realtime Ä‘Ã¡ng tin cáº­y**. Tráº¡ng thÃ¡i `Trainable: YES` chá»‰ xÃ¡c nháº­n Ä‘á»‹nh dáº¡ng file YOLO há»£p lá»‡ vá» máº·t ká»¹ thuáº­t, khÃ´ng Ä‘áº£m báº£o tÃ­nh Ä‘á»™c láº­p hay cháº¥t lÆ°á»£ng dá»¯ liá»‡u.
 
-```powershell
-Get-ChildItem datasets/pen_parts/raw/person01/session01 -Filter *.jpg | Measure-Object
-Invoke-Item datasets/pen_parts/raw/person01/session01
-```
+### 1.1. CÃ¡c váº¥n Ä‘á» phÃ¡t hiá»‡n trong Ä‘á»£t kiá»ƒm tra
 
-Kiểm tra nhanh toàn bộ ảnh và chỉ giữ ảnh đáp ứng các điều kiện:
+| Váº¥n Ä‘á» | Káº¿t quáº£ phÃ¡t hiá»‡n | TÃ¡c Ä‘á»™ng thá»±c táº¿ |
+|---|---|---|
+| **RÃ² rá»‰ dá»¯ liá»‡u (Data Leakage)** | CÃ³ **70 cáº·p frame liÃªn tiáº¿p** náº±m khÃ¡c split. Cá»¥ thá»ƒ: Frame 008 á»Ÿ `test`, Frame 009 á»Ÿ `train`, Frame 010 á»Ÿ `validation` vÃ  gáº§n nhÆ° cÃ¹ng má»™t cáº£nh quay | Model há»c thuá»™c bá»‘i cáº£nh thay vÃ¬ há»c Ä‘áº·c trÆ°ng tá»•ng quÃ¡t. Äiá»ƒm sá»‘ mAP trÃªn test set hiá»‡n táº¡i bá»‹ thá»•i phá»“ng giáº£ táº¡o |
+| **Nguá»“n dá»¯ liá»‡u Ä‘Æ¡n Ä‘iá»‡u** | ToÃ n bá»™ 151 áº£nh dÆ°á»ng nhÆ° trÃ­ch tá»« cÃ¹ng má»™t video, cÃ¹ng má»™t ngÆ°á»i thá»±c hiá»‡n, cÃ¹ng gÃ³c camera vÃ  Ä‘iá»u kiá»‡n Ã¡nh sÃ¡ng | Äem mÃ´ hÃ¬nh sang mÃ¡y khÃ¡c, gÃ³c quay khÃ¡c hoáº·c Ã¡nh sÃ¡ng khÃ¡c sáº½ sá»¥t giáº£m Ä‘á»™ chÃ­nh xÃ¡c |
+| **Label rá»—ng thiáº¿u sÃ³t** | **56/151 áº£nh cÃ³ label rá»—ng**. Kiá»ƒm tra frame 008â€“010 tháº¥y há»™p sáº¡c rÃµ rÃ ng nhÆ°ng khÃ´ng Ä‘Æ°á»£c gÃ¡n nhÃ£n `Case` | YOLO coi cÃ¡c áº£nh nÃ y lÃ  background Ã¢m tÃ­nh; Ä‘iá»u nÃ y dáº¡y máº¡ng neuron pháº¡t cÃ¡c dá»± Ä‘oÃ¡n Case Ä‘Ãºng |
+| **Bounding box lá»—i** | CÃ³ 3 box `Earbud` chá»‰ khoáº£ng **1â€“6 pixel** | GÃ¢y nhiá»…u anchor vÃ  tÃ­nh toÃ¡n hÃ m máº¥t mÃ¡t (loss) |
+| **Bounding box trÃ¹ng láº·p** | Frame 013 chá»‰ tháº¥y 2 earbud nhÆ°ng cÃ³ tá»›i **4 box `Earbud`**; tá»•ng cá»™ng 7 áº£nh cÃ³ trÃªn hai box Earbud | GÃ¢y nháº§m láº«n cho thuáº­t toÃ¡n triá»‡t tiÃªu box trÃ¹ng (NMS) |
+| **Test set quÃ¡ má»ng** | Táº­p test chá»‰ cÃ³ **4 `Case`**, **11 `Earbud`**, **1 `Empty_Slot`** | Máº«u kiá»ƒm thá»­ quÃ¡ Ã­t, khÃ´ng Ä‘á»§ cÆ¡ sá»Ÿ thá»‘ng kÃª Ä‘á»ƒ Ä‘Ã¡nh giÃ¡ mAP theo tá»«ng lá»›p |
+| **Máº¥t cÃ¢n báº±ng lá»›p** | `Empty_Slot` chá»‰ cÃ³ **38 box**, tháº¥p hÆ¡n ráº¥t nhiá»u so vá»›i 144 box `Earbud` | Detector há»c nháº­n diá»‡n khe trá»‘ng kÃ©m hÆ¡n háº³n so vá»›i tai nghe |
 
-- Đúng linh kiện, đúng session và không có chữ giao diện trên ảnh.
-- Ảnh đủ nét để nhìn ra lò xo/ruột.
-- Không quá tối, cháy sáng hoặc bị bàn tay che hoàn toàn.
-- Không có quá nhiều ảnh gần như giống hệt nhau.
-- Mỗi lớp đều xuất hiện đủ trong session validation và test.
+> [!CAUTION]
+> **VÃ¬ váº­y: Tuyá»‡t Ä‘á»‘i chÆ°a nÃªn tin cáº­y mAP thu Ä‘Æ°á»£c tá»« táº­p test hiá»‡n táº¡i Ä‘á»ƒ bÃ¡o cÃ¡o hay Ä‘Ã¡nh giÃ¡ sáº£n pháº©m.**
 
-Sau khi kiểm tra, upload từng session lên CVAT để gắn bounding box. Ghi lại bảng `person/session -> train/val/test` và không chia ngẫu nhiên các ảnh liên tiếp.
+---
 
-### 4.8. Các tình huống bắt buộc phải có trong toàn bộ dataset
+## 2. Báº¡n cáº§n sá»­a dataset tai nghe nhÆ° tháº¿ nÃ o?
 
-- Mỗi linh kiện nằm ngang, dọc, chéo.
-- Linh kiện trong khay và trong WORK ZONE.
-- Tay đang cầm, che khoảng 20–50%.
-- Nhiều linh kiện xuất hiện cùng lúc.
-- Bút hoàn chỉnh ở nhiều góc.
-- Ảnh âm tính: bàn trống, chỉ có tay, bút chì, kẹp giấy, dây nhỏ hoặc vật giống lò xo.
-- Ánh sáng sáng hơn/tối hơn một chút nhưng vật thể vẫn nhìn rõ.
+### 2.1. NÄƒm viá»‡c cáº§n sá»­a ngay trÃªn nhÃ£n hiá»‡n cÃ³
+1. **Kiá»ƒm tra láº¡i toÃ n bá»™ 56 label rá»—ng:** Má»Ÿ tá»«ng áº£nh trong 56 áº£nh nÃ y. Náº¿u áº£nh cÃ³ `Case`, `Earbud` hoáº·c `Empty_Slot`, báº¯t buá»™c pháº£i khoanh box Ä‘á»§. Chá»‰ Ä‘á»ƒ label rá»—ng náº¿u áº£nh hoÃ n toÃ n khÃ´ng cÃ³ linh kiá»‡n nÃ o (áº£nh bÃ n trá»‘ng hoáº·c chá»‰ cÃ³ tay).
+2. **Chuáº©n hÃ³a sá»‘ lÆ°á»£ng box Earbud:** Má»—i earbud váº­t lÃ½ chá»‰ cÃ³ Ä‘Ãºng má»™t bounding box Ã´m sÃ¡t. Tuyá»‡t Ä‘á»‘i khÃ´ng váº½ thÃªm box to bao cáº£ hai earbud cÃ¹ng lÃºc.
+3. **XÃ³a/sá»­a 3 box rÃ¡c:** TÃ¬m vÃ  xÃ³a cÃ¡c box kÃ­ch thÆ°á»›c 1â€“6 pixel trong dá»¯ liá»‡u.
+4. **Khá»­ rÃ² rá»‰ dá»¯ liá»‡u (Quan trá»ng nháº¥t):** KhÃ´ng chia ngáº«u nhiÃªn cÃ¡c frame trÃ­ch tá»« cÃ¹ng má»™t video vÃ o train, val, test. ToÃ n bá»™ 151 áº£nh tá»« video Ä‘áº§u tiÃªn nÃ y **pháº£i Ä‘Æ°á»£c gom toÃ n bá»™ vÃ o táº­p `train`**.
+5. **Quay session má»›i Ä‘á»™c láº­p cho validation vÃ  test:**
+   - Táº­p `validation` pháº£i lÃ  má»™t buá»•i quay riÃªng biá»‡t (thay Ä‘á»•i gÃ³c quay hoáº·c ná»n nháº¹).
+   - Táº­p `test` pháº£i lÃ  má»™t buá»•i quay Ä‘á»™c láº­p hoÃ n toÃ n (ngÆ°á»i khÃ¡c lÃ m hoáº·c ngÃ y khÃ¡c) vÃ  Ä‘Æ°á»£c giá»¯ kÃ­n Ä‘á»ƒ cháº¥m Ä‘iá»ƒm.
 
-Không nhấn Space liên tục khi cảnh gần như không thay đổi. Mỗi ảnh nên thay đổi ít nhất một yếu tố: vị trí, góc xoay, tay che, khoảng cách hoặc nền sáng.
+### 2.2. Má»¥c tiÃªu sá»‘ lÆ°á»£ng cho Ä‘á»£t thu tháº­p tiáº¿p theo
+Äá»ƒ mÃ´ hÃ¬nh phÃ¡t hiá»‡n á»•n Ä‘á»‹nh vÃ  Ä‘Ã¡nh giÃ¡ tin cáº­y, bá»™ dá»¯ liá»‡u vÃ²ng tiáº¿p theo nÃªn Ä‘áº¡t:
+- **300â€“500 áº£nh** tháº­t sá»± khÃ¡c nhau.
+- `Case`: Ãt nháº¥t **150 box**.
+- `Earbud`: **250â€“300 box**.
+- `Empty_Slot`: Ãt nháº¥t **150 box**.
+- Má»—i lá»›p trong táº­p test nÃªn cÃ³ tá»‘i thiá»ƒu **30â€“50 box**.
+- **10â€“20% áº£nh Ã¢m tÃ­nh tháº­t:** BÃ n trá»‘ng, chá»‰ cÃ³ tay, hoáº·c cÃ¡c váº­t gÃ¢y nháº§m.
 
-### 4.9. Mục tiêu số lượng instance sau khi gắn nhãn
+### 2.3. CÃ¡c tÃ¬nh huá»‘ng báº¯t buá»™c pháº£i chá»¥p thÃªm
+- Há»™p sáº¡c á»Ÿ cáº£ hai tráº¡ng thÃ¡i: **má»Ÿ náº¯p** vÃ  **Ä‘Ã³ng náº¯p**, xoay á»Ÿ nhiá»u gÃ³c khÃ¡c nhau.
+- CÃ¡c tráº¡ng thÃ¡i khe cáº¯m: **má»™t khe trá»‘ng**, **hai khe trá»‘ng**, vÃ  **khÃ´ng cÃ²n khe trá»‘ng nÃ o** (Ä‘Ã£ cáº¯m Ä‘á»§ hai tai).
+- Tráº¡ng thÃ¡i tai nghe: Má»™t tai nghe riÃªng láº» vÃ  hai tai nghe cÃ¹ng xuáº¥t hiá»‡n.
+- Tay ngÆ°á»i thao tÃ¡c: Äang cáº§m, Ä‘ang che má»™t pháº§n (20â€“40% váº­t thá»ƒ).
+- Vá»‹ trÃ­ thao tÃ¡c: Tai nghe náº±m ngoÃ i há»™p, náº±m gáº§n miá»‡ng há»™p, vÃ  Ä‘ang Ä‘Æ°á»£c Ä‘áº·t dá»Ÿ vÃ o khe.
+- Äa dáº¡ng mÃ´i trÆ°á»ng: Thay Ä‘á»•i Ã¡nh sÃ¡ng (sÃ¡ng/tá»‘i hÆ¡n), ná»n bÃ n, khoáº£ng cÃ¡ch camera vÃ  ngÆ°á»i thao tÃ¡c khÃ¡c nhau.
+- Váº­t gÃ¢y nháº§m láº«n (negative distractors): Chuá»™t mÃ¡y tÃ­nh, há»™p nhá», cá»§ sáº¡c Ä‘iá»‡n thoáº¡i, tai nghe cÃ³ dÃ¢y.
 
-Mục tiêu instance tối thiểu để bắt đầu thử:
+---
 
-| Lớp | Số instance mong muốn |
-|---|---:|
-| `barrel` | ≥ 150 |
-| `refill` | ≥ 200 |
-| `spring` | ≥ 250 |
-| `cap` | ≥ 150 |
-| `assembled_pen` | ≥ 150 |
+## 3. Kiá»ƒm tra cáº¥u hÃ¬nh vÃ  Tráº¡ng thÃ¡i sá»­a lá»—i tÃ­ch há»£p
 
-Đây là mốc khởi đầu, không phải bảo đảm chất lượng. Sau lần train đầu, thu thêm đúng các tình huống model đang sai.
-
-## 5. Chia dataset detection không bị rò rỉ
-
-Không chia các ảnh liên tiếp cùng session ngẫu nhiên sang cả ba tập. Chia theo buổi quay hoặc người:
-
+### 3.1. Káº¿t quáº£ kiá»ƒm tra FSM
+Ba file cáº¥u hÃ¬nh JSON trong thÆ° má»¥c `configs/` Ä‘á»u há»£p lá»‡ cÃº phÃ¡p. Logic mÃ¡y tráº¡ng thÃ¡i FSM Ä‘Ã£ Ä‘Æ°á»£c kiá»ƒm thá»­ tá»± Ä‘á»™ng vÃ  cháº¡y chÃ­nh xÃ¡c:
 ```text
-session01, session02, session03 -> train
-session04                    -> validation
-session05                    -> test
+pick_case â†’ insert_earbud â†’ close_case â†’ COMPLETED
 ```
+FSM báº¯t lá»—i thÃ nh cÃ´ng: Náº¿u ngÆ°á»i dÃ¹ng thá»±c hiá»‡n `insert_earbud` trÆ°á»›c khi cÃ³ `pick_case`, há»‡ thá»‘ng láº­p tá»©c bÃ¡o lá»—i `VIOLATION`: *"ChÆ°a Ä‘áº·t há»™p sáº¡c vÃ o vÃ¹ng láº¯p mÃ  Ä‘Ã£ thao tÃ¡c tai nghe."*
 
-Nếu chỉ có một người, thay đổi session theo ngày/góc camera/ánh sáng. Tốt hơn là test có ít nhất một người chưa xuất hiện trong train.
+### 3.2. Báº£ng theo dÃµi cÃ¡c Ä‘iá»ƒm tÃ­ch há»£p há»‡ thá»‘ng
 
-Dataset hiện tại chỉ có `person01/session01` và `person01/session02`, nên chưa thể tạo test độc lập đáng tin cậy. Khi thu đủ session mới, tạo split theo session và giữ nguyên test cho tới khi model đã chốt.
+| Váº¥n Ä‘á» tÃ­ch há»£p phÃ¡t hiá»‡n | Tráº¡ng thÃ¡i ká»¹ thuáº­t | HÆ°á»›ng dáº«n & Giáº£i phÃ¡p Ä‘Ã£ thá»±c hiá»‡n |
+|---|---|---|
+| **ThÆ° má»¥c sai tÃªn `earbub_parts`** | **ÄÃƒ Sá»¬A** | ÄÃ£ Ä‘á»•i tÃªn thÃ nh `datasets/earbud_parts` vÃ  cáº­p nháº­t file [data.yaml](file:///E:/Professional%20documents/Internship/RBCNN_Demo/datasets/earbud_parts/data.yaml). Validator kiá»ƒm tra Ä‘áº¡t `Trainable: YES` |
+| **Checkpoint `earbud_detector`** | **ÄÃƒ Sáº´N SÃ€NG** | Checkpoint `artifacts/training/earbud_detector/weights/best.pt` Ä‘Ã£ cÃ³ sáºµn tá»« láº§n train baseline cá»§a báº¡n, sáºµn sÃ ng cháº¡y camera |
+| **Script train máº·c Ä‘á»‹nh tÃªn cÅ©** | **ÄÃƒ Sá»¬A** | [train_detector.py](file:///E:/Professional%20documents/Internship/RBCNN_Demo/scripts/train_detector.py) giá» tá»± Ä‘á»™ng suy luáº­n: náº¿u `--data` lÃ  earbud thÃ¬ tá»± Ä‘á»™ng lÆ°u vÃ o `earbud_detector` |
+| **PhÃ­m camera hardcode láº¯p bÃºt** | **ÄÃƒ Sá»¬A** | [camera_app.py](file:///E:/Professional%20documents/Internship/RBCNN_Demo/src/assembly/camera_app.py) Ä‘Ã£ chuyá»ƒn sang phÃ­m Ä‘á»™ng: vá»›i tai nghe, phÃ­m `1` lÃ  `pick_case`, phÃ­m `2` lÃ  `insert_earbud`, phÃ­m `3` lÃ  `close_case` |
+| **Script quay video máº·c Ä‘á»‹nh bÃºt** | **ÄÃƒ Sá»¬A** | [record_assembly_videos.py](file:///E:/Professional%20documents/Internship/RBCNN_Demo/scripts/record_assembly_videos.py) Ä‘Ã£ há»— trá»£ `--project earbud` vÃ  cho phÃ©p Ä‘áº·t tÃªn ká»‹ch báº£n (`--scenario`) tá»± do |
+| **ChÆ°a kiá»ƒm tra containment hÃ¬nh há»c** | **ÄÃƒ Sá»¬A Ná»€N Táº¢NG** | Class `Detection` trong [vision.py](file:///E:/Professional%20documents/Internship/RBCNN_Demo/src/assembly/vision.py) Ä‘Ã£ cÃ³ sáºµn cÃ¡c phÆ°Æ¡ng thá»©c `is_inside`, `overlap_ratio_with`, `contains_point` |
+| **`close_case` chÆ°a cÃ³ detection class** | **Cáº¦N CHá»T GIáº¢I PHÃP** | Xem phÃ¢n tÃ­ch chi tiáº¿t táº¡i Má»¥c 3.3 bÃªn dÆ°á»›i |
+| **`Empty_Slot` cÃ³ `action: null`** | **Cáº¦N CHá»T GIáº¢I PHÃP** | Xem phÃ¢n tÃ­ch chi tiáº¿t táº¡i Má»¥c 3.4 bÃªn dÆ°á»›i |
+| **Cáº§n video temporal cho BiLSTM** | **Báº N Cáº¦N LÃ€M** | Xem hÆ°á»›ng dáº«n quay video táº¡i Má»¥c 6 |
 
-Không dùng `scripts/split_dataset.py` với cách chia ngẫu nhiên để tạo kết quả báo cáo cuối. Script đó chỉ phù hợp smoke test. Không tạo label rỗng cho ảnh có linh kiện.
+### 3.3. Xá»­ lÃ½ hÃ nh Ä‘á»™ng `close_case`
+Hiá»‡n táº¡i máº¡ng detector chá»‰ nháº­n diá»‡n 3 lá»›p: `Case`, `Earbud`, `Empty_Slot`. Khi náº¯p há»™p Ä‘Ã³ng láº¡i, váº­t thá»ƒ váº«n lÃ  `Case`. Do Ä‘Ã³ má»™t detector áº£nh tÄ©nh khÃ´ng thá»ƒ tá»± phÃ¢n biá»‡t Ä‘Æ°á»£c giá»¯a viá»‡c "há»™p Ä‘ang má»Ÿ" vÃ  "hÃ nh Ä‘á»™ng Ä‘Ã³ng náº¯p vá»«a xáº£y ra".
 
-## 6. Train và đánh giá detector
+CÃ¡c giáº£i phÃ¡p:
+1. **DÃ¹ng phÃ­m xÃ¡c nháº­n (Hiá»‡n táº¡i):** Sau khi láº¯p xong tai nghe, ngÆ°á»i dÃ¹ng nháº¥n phÃ­m `3` hoáº·c `SPACE` Ä‘á»ƒ xÃ¡c nháº­n Ä‘Ã³ng náº¯p hoÃ n táº¥t.
+2. **DÃ¹ng mÃ´ hÃ¬nh Temporal ViT + BiLSTM:** Quay video hÃ nh Ä‘á»™ng Ä‘Ã³ng náº¯p, máº¡ng BiLSTM sáº½ nháº­n diá»‡n cá»­ chá»‰ gáº­p náº¯p theo chuá»—i thá»i gian vÃ  tá»± Ä‘á»™ng phÃ¡t event `close_case`.
+3. **Má»Ÿ rá»™ng class Detector (KhuyÃªn dÃ¹ng khi gÃ¡n nhÃ£n láº¡i):** Thay vÃ¬ chá»‰ má»™t nhÃ£n `Case`, gÃ¡n thÃ nh:
+   - `Case_Open`: Há»™p sáº¡c Ä‘ang má»Ÿ náº¯p.
+   - `Case_Closed`: Há»™p sáº¡c Ä‘Ã£ Ä‘Ã³ng náº¯p.  
+   Khi `Case_Closed` xuáº¥t hiá»‡n trong WORK ZONE, detector cÃ³ thá»ƒ kÃ­ch hoáº¡t trá»±c tiáº¿p `close_case`!
 
-Sau khi validator báo `Trainable: YES`:
+### 3.4. Táº­n dá»¥ng lá»›p `Empty_Slot`
+Lá»›p `Empty_Slot` hiá»‡n cÃ³ `"action": null` (chá»‰ hiá»ƒn thá»‹ box xanh dÆ°Æ¡ng). Äá»ƒ Ä‘Æ°a vÃ o logic kiá»ƒm tra:
+- **NguyÃªn lÃ½:** Khi há»™p sáº¡c má»Ÿ ra, ban Ä‘áº§u sáº½ cÃ³ 2 khe trá»‘ng (`Empty_Slot = 2`). Khi cáº¯m tai nghe vÃ o, khe trá»‘ng bá»‹ che khuáº¥t vÃ  biáº¿n máº¥t.
+- Báº±ng phÆ°Æ¡ng thá»©c `is_inside(case)` vá»«a bá»• sung, há»‡ thá»‘ng cÃ³ thá»ƒ Ä‘áº¿m sá»‘ `Empty_Slot` náº±m trong `Case`. Khi sá»‘ khe trá»‘ng giáº£m tá»« 2 vá» 0, há»‡ thá»‘ng tá»± Ä‘á»™ng xÃ¡c nháº­n hoÃ n thÃ nh bÆ°á»›c láº¯p tai nghe.
+
+---
+
+## 4. Quyáº¿t Ä‘á»‹nh thiáº¿t káº¿ báº¡n cáº§n chá»‘t
+
+TrÆ°á»›c khi cáº¥u trÃºc láº¡i FSM vÃ  gÃ¡n nhÃ£n chi tiáº¿t, báº¡n cáº§n tráº£ lá»i cÃ¢u há»i cá»‘t lÃµi sau:
+
+> [!IMPORTANT]
+> **Quy trÃ¬nh cá»§a báº¡n cáº§n láº¯p Má»˜T tai nghe hay pháº£i kiá»ƒm tra Ä‘á»§ Cáº¢ HAI tai nghe (tai trÃ¡i vÃ  tai pháº£i)?**
+
+### Lá»±a chá»n A: Quy trÃ¬nh láº¯p 1 tai nghe (Hiá»‡n táº¡i)
+- **Chu trÃ¬nh:** `pick_case` -> `insert_earbud` -> `close_case` -> HoÃ n táº¥t.
+- **Æ¯u Ä‘iá»ƒm:** ÄÆ¡n giáº£n, FSM hiá»‡n táº¡i trong [earbud_fsm_config.json](file:///E:/Professional%20documents/Internship/RBCNN_Demo/configs/earbud_fsm_config.json) giá»¯ nguyÃªn vÃ  cháº¡y ngay láº­p tá»©c.
+- **PhÃ¹ há»£p:** LÃ m demo ban Ä‘áº§u, kiá»ƒm thá»­ nhanh kháº£ nÄƒng nháº­n diá»‡n.
+
+### Lá»±a chá»n B: Quy trÃ¬nh kiá»ƒm tra Ä‘á»§ cáº£ 2 tai nghe (Chuáº©n cÃ´ng nghiá»‡p)
+- **Chu trÃ¬nh:** `pick_case` -> `insert_earbud_1` -> `insert_earbud_2` -> `close_case` -> HoÃ n táº¥t.
+- **YÃªu cáº§u:** 
+  - FSM cáº§n thÃªm má»™t tráº¡ng thÃ¡i trung gian (`S2_FIRST_EARBUD_INSERTED` vÃ  `S3_SECOND_EARBUD_INSERTED`).
+  - Hoáº·c FSM giá»¯ nguyÃªn action `insert_earbud` nhÆ°ng yÃªu cáº§u xuáº¥t hiá»‡n 2 láº§n liÃªn tiáº¿p trÆ°á»›c khi cho phÃ©p `close_case`.
+  - Náº¿u phÃ¢n biá»‡t khe TrÃ¡i / khe Pháº£i: Cáº§n Ä‘áº·t nhÃ£n `Left_Slot`, `Right_Slot` hoáº·c `Earbud_L`, `Earbud_R`.
+
+*Báº¡n hÃ£y chá»n PhÆ°Æ¡ng Ã¡n A hay B Ä‘á»ƒ mÃ¬nh tinh chá»‰nh cáº¥u hÃ¬nh FSM tÆ°Æ¡ng á»©ng.*
+
+---
+
+## 5. HÆ°á»›ng dáº«n cháº¡y thá»­ nghiá»‡m Há»‡ thá»‘ng Tai nghe ngay hÃ´m nay
+
+Báº¡n cÃ³ thá»ƒ cháº¡y thá»­ há»‡ thá»‘ng thá»i gian thá»±c vá»›i checkpoint baseline hiá»‡n táº¡i:
 
 ```powershell
-python scripts/train_detector.py --data datasets/pen_parts/data.yaml --epochs 60
+cd "E:\Professional documents\Internship\RBCNN_Demo"
+
+# Khá»Ÿi cháº¡y camera thá»i gian thá»±c vá»›i cáº¥u hÃ¬nh tai nghe:
+python scripts/run_camera.py `
+  --source 0 `
+  --camera-config configs/camera_earbud_config.json `
+  --fsm-config configs/earbud_fsm_config.json
 ```
 
-Checkpoint:
+### CÃ¡c phÃ­m Ä‘iá»u khiá»ƒn trong cá»­a sá»• camera:
+- `PhÃ­m 1`: MÃ´ phá»ng hÃ nh Ä‘á»™ng **`pick_case`** (Äáº·t há»™p sáº¡c).
+- `PhÃ­m 2`: MÃ´ phá»ng hÃ nh Ä‘á»™ng **`insert_earbud`** (Láº¯p tai nghe).
+- `PhÃ­m 3`: MÃ´ phá»ng hÃ nh Ä‘á»™ng **`close_case`** (ÄÃ³ng náº¯p há»™p).
+- `PhÃ­m SPACE`: XÃ¡c nháº­n gá»£i Ã½ tá»± Ä‘á»™ng khi detector phÃ¡t hiá»‡n váº­t thá»ƒ náº±m á»•n Ä‘á»‹nh trong vÃ¹ng WORK ZONE.
+- `PhÃ­m C`: Chuyá»ƒn Ä‘á»•i giá»¯a cÃ¡c camera káº¿t ná»‘i (webcam laptop / camera USB ngoÃ i).
+- `PhÃ­m R`: Reset chu trÃ¬nh vá» tráº¡ng thÃ¡i ban Ä‘áº§u `S0_IDLE`.
+- `PhÃ­m S`: LÆ°u áº£nh chá»¥p mÃ n hÃ¬nh vÃ o `artifacts/screenshots/`.
+- `PhÃ­m Q` hoáº·c `Esc`: ThoÃ¡t chÆ°Æ¡ng trÃ¬nh.
 
-```text
-artifacts/training/pen_parts_detector/weights/best.pt
-```
-
-Chạy camera bằng model đã train:
-
+### Cháº¡y kiá»ƒm thá»­ tá»± Ä‘á»™ng toÃ n bá»™ test case:
 ```powershell
-python scripts/run_camera.py --source 0 --model artifacts/training/pen_parts_detector/weights/best.pt
+python -m unittest discover tests
 ```
+*(Káº¿t quáº£ hiá»‡n táº¡i: ToÃ n bá»™ 41 unit test Ä‘á»u cháº¡y thÃ nh cÃ´ng).*
 
-Ghi riêng kết quả validation và test:
+---
 
-- Precision, recall và mAP cho từng lớp.
-- False positive khi chỉ có tay/bàn trống.
-- Tỷ lệ bỏ sót lò xo và ruột.
-- Tốc độ inference trên laptop.
+## 6. HÆ°á»›ng dáº«n quay video hÃ nh Ä‘á»™ng cho Tai nghe (ViT + BiLSTM)
 
-Không chọn confidence threshold bằng test set. Thử các threshold trên validation, chốt một ngưỡng rồi mới chạy test một lần.
+Náº¿u báº¡n muá»‘n há»‡ thá»‘ng tá»± Ä‘á»™ng nháº­n diá»‡n hÃ nh Ä‘á»™ng láº¯p rÃ¡p (nhÆ° cáº¯m tai nghe, gáº­p náº¯p há»™p) mÃ  khÃ´ng cáº§n nháº¥n phÃ­m:
 
-## 7. Quay dataset video hành động
-
-Detector chỉ biết vật gì đang ở đâu. Để hệ thống biết bạn đang **cắm**, **vặn** hay **bấm**, cần video temporal riêng.
-
-### 7.1. Quay một session
-
-Ví dụ người 1, buổi 1, quy trình đúng:
-
+### 6.1. Lá»‡nh quay má»™t session tai nghe
 ```powershell
+# Quay ká»‹ch báº£n láº¯p Ä‘Ãºng (correct):
 python scripts/record_assembly_videos.py `
   --source 0 `
   --person person01 `
   --session session01 `
+  --project earbud `
   --scenario correct
 ```
 
-Trong cửa sổ:
+Video sáº½ tá»± Ä‘á»™ng Ä‘Æ°á»£c lÆ°u vÃ o: `data/earbud_actions/raw_videos/person01/session01/`.
 
-1. Chuẩn bị bút ở trạng thái tháo rời.
-2. Nhấn `Space` để bắt đầu quay.
-3. Đứng yên khoảng 1 giây (`idle`).
-4. Thực hiện đủ chu trình.
-5. Đứng yên khoảng 1 giây sau khi bấm thử.
-6. Nhấn `Space` để kết thúc clip.
-7. Chuẩn bị lại linh kiện rồi quay lượt tiếp theo.
-
-Mỗi clip chỉ chứa một chu trình. Script tự tạo `recording_log.csv`.
-
-### 7.2. Số lượt cần quay
-
-Với mỗi người:
-
-- 10 lượt đúng tốc độ bình thường.
-- 5 lượt đúng chậm.
-- 5 lượt đúng nhanh.
-- 5–10 lượt cho mỗi lỗi được giao.
-
-Tổng mục tiêu:
-
-- 4–5 người.
-- 15–20 chu trình đúng/người.
-- 15–30 clip cho mỗi loại lỗi.
-
-Các lệnh lỗi:
-
+### 6.2. Quay cÃ¡c ká»‹ch báº£n lá»—i Ä‘á»ƒ kiá»ƒm thá»­ cáº£nh bÃ¡o FSM:
 ```powershell
-python scripts/record_assembly_videos.py --source 0 --person person01 --session session02 --scenario missing_refill
-python scripts/record_assembly_videos.py --source 0 --person person01 --session session03 --scenario missing_spring
-python scripts/record_assembly_videos.py --source 0 --person person01 --session session04 --scenario wrong_order
-python scripts/record_assembly_videos.py --source 0 --person person01 --session session05 --scenario premature_test
+# Ká»‹ch báº£n quÃªn láº¯p tai nghe mÃ  Ä‘Ã£ Ä‘Ã³ng há»™p:
+python scripts/record_assembly_videos.py --source 0 --person person01 --session session02 --project earbud --scenario missing_earbud
+
+# Ká»‹ch báº£n Ä‘Ã³ng náº¯p quÃ¡ sá»›m:
+python scripts/record_assembly_videos.py --source 0 --person person01 --session session03 --project earbud --scenario close_case_early
+
+# Ká»‹ch báº£n lÃ m sai thá»© tá»± (cáº§m tai nghe trÆ°á»›c khi Ä‘áº·t há»™p):
+python scripts/record_assembly_videos.py --source 0 --person person01 --session session04 --project earbud --scenario wrong_order
 ```
 
-## 8. Gán nhãn thời gian cho video
+---
 
-Sao chép template:
+## 7. Checklist viá»‡c báº¡n nÃªn Æ°u tiÃªn lÃ m ngay
 
-```powershell
-Copy-Item data/pen_actions/annotations_template.csv data/pen_actions/annotations.csv
-```
+Äá»ƒ hoÃ n thiá»‡n há»‡ thá»‘ng, báº¡n hÃ£y thá»±c hiá»‡n theo thá»© tá»± sau:
 
-Mỗi dòng dùng thời gian giây:
+- [ ] **Viá»‡c 1: Chá»‘t thiáº¿t káº¿ FSM:** BÃ¡o cho mÃ¬nh biáº¿t báº¡n muá»‘n quy trÃ¬nh kiá»ƒm tra 1 tai nghe hay Ä‘á»§ cáº£ 2 tai nghe (trÃ¡i/pháº£i).
+- [ ] **Viá»‡c 2: Sá»­a 56 label rá»—ng & xÃ³a 3 box lá»—i:** Má»Ÿ táº­p dá»¯ liá»‡u `datasets/earbud_parts` trÃªn cÃ´ng cá»¥ gÃ¡n nhÃ£n, kiá»ƒm tra 56 file label rá»—ng vÃ  gÃ¡n box cho cÃ¡c áº£nh tháº¥y rÃµ há»™p sáº¡c / tai nghe / khe trá»‘ng; xÃ³a 3 box 1-6 pixel.
+- [ ] **Viá»‡c 3: Khá»­ rÃ² rá»‰ dá»¯ liá»‡u:** Chuyá»ƒn toÃ n bá»™ 151 áº£nh hiá»‡n táº¡i vÃ o táº­p `train`.
+- [ ] **Viá»‡c 4: Quay session má»›i cho Val vÃ  Test:** Quay 1 session Ä‘á»™c láº­p cho `val` (khoáº£ng 50 áº£nh) vÃ  1 session Ä‘á»™c láº­p cho `test` (khoáº£ng 50 áº£nh) tá»« gÃ³c quay / ngÆ°á»i thao tÃ¡c khÃ¡c.
+- [ ] **Viá»‡c 5: Kiá»ƒm tra vÃ  train láº¡i:** Cháº¡y `python scripts/validate_detection_dataset.py --data datasets/earbud_parts/data.yaml`, sau Ä‘Ã³ cháº¡y `python scripts/train_detector.py --data datasets/earbud_parts/data.yaml --epochs 60` Ä‘á»ƒ cÃ³ checkpoint sáº¡ch má»›i.
 
-```csv
-video_id,person_id,session_id,split,start_time_s,end_time_s,action_name,is_anomaly
-person01_session01_correct_20260903_101500_001,person01,session01,train,0.000,1.000,idle,0
-person01_session01_correct_20260903_101500_001,person01,session01,train,1.000,2.300,pick_barrel,0
-```
-
-Sáu action hợp lệ:
-
-```text
-idle
-pick_barrel
-insert_refill
-insert_spring
-screw_cap
-test_click
-```
-
-Quy tắc:
-
-- `start_time_s`: lúc tay bắt đầu hành động có mục đích.
-- `end_time_s`: lúc vật đã được đặt/lắp xong hoặc tay rời thao tác.
-- Gán hết các đoạn rõ ràng, không gán cả clip thành một action.
-- Đoạn mơ hồ ở biên có thể bỏ ra thay vì ép nhãn sai.
-- Cột `split` phải giống nhau cho toàn bộ đoạn của cùng `video_id`.
-- Không để video cùng người/session xuất hiện ở nhiều split.
-
-Dataset loader đã kiểm tra tự động hai quy tắc cuối và sẽ dừng nếu phát hiện rò rỉ split.
-
-## 9. Trích ViT feature, train và đánh giá BiLSTM
-
-Cài dependency nếu chưa có:
-
-```powershell
-python -m pip install -r requirements-ml.txt
-```
-
-Trích feature một lần:
-
-```powershell
-python scripts/extract_spatial_features.py
-```
-
-Kết quả mỗi video:
-
-```text
-data/pen_actions/features/<video_id>.npy   # shape (N, 768)
-data/pen_actions/features/<video_id>.json  # fps, frame count, backbone
-```
-
-Train BiLSTM:
-
-```powershell
-python scripts/train_action_model.py
-```
-
-Đánh giá test sau khi đã chốt model bằng validation:
-
-```powershell
-python scripts/evaluate_action_model.py `
-  --checkpoint artifacts/action_model/best.pt `
-  --split test
-```
-
-Không dùng file `models/tf_model.h5` làm YOLO detector. File đó là ViT ImageNet-1K TensorFlow weights. Pipeline mới dùng backbone được khai báo trong `configs/action_model_config.json`; embedding dimension không còn hard-code trong model LSTM.
-
-## 10. Khi nào mới bật tự động kiểm tra hoàn toàn?
-
-Chỉ tích hợp checkpoint action vào realtime khi:
-
-- Detector nhận đủ năm lớp trên validation/test độc lập.
-- Action model có Macro-F1 mục tiêu ban đầu ≥ 0,85.
-- Recall của `insert_spring`, `screw_cap`, `test_click` đạt mức chấp nhận.
-- Thử nghiệm đúng/sai ngoài đời không có cảnh báo giả thường xuyên.
-- Confidence và majority vote đã được chọn trên validation.
-
-Camera hiện đã được sửa để không lọc mất hành động sai. Nếu camera thấy `cap` khi FSM đang chờ `refill`, evidence `screw_cap` vẫn được gửi tới FSM để tạo `VIOLATION`.
-
-## 11. Checklist bàn giao cho mình
-
-Khi hoàn thành một giai đoạn, bạn chỉ cần báo và cung cấp đúng phần sau:
-
-### Detector
-
-- [ ] `images/train`, `images/val`, `images/test`.
-- [ ] `labels/train`, `labels/val`, `labels/test`.
-- [ ] Validator báo `Trainable: YES`.
-- [ ] Ghi rõ người/session nào thuộc split nào.
-
-### Action recognition
-
-- [ ] Video nằm trong `data/pen_actions/raw_videos/<person>/<session>/`.
-- [ ] `recording_log.csv`.
-- [ ] `annotations.csv` có timestamp và split.
-- [ ] Ít nhất ba người hoặc nhiều session độc lập.
-
-## 12. Việc bạn nên làm ngay hôm nay
-
-1. Chọn 20–30 ảnh rõ, không trùng nhau từ `person01/session02`.
-2. Gán bounding box trên CVAT và kiểm tra đúng thứ tự năm class.
-3. Thu thêm `person01/session03`, `person01/session04` và ít nhất một session của `person02` hoặc ngày quay khác.
-4. Chia ảnh đã gán nhãn theo session vào `images/` và `labels/` của train/val/test.
-5. Chạy `python scripts/validate_detection_dataset.py`.
-6. Chỉ train khi validator nhận được box của đủ năm lớp và báo `Trainable: YES`.
-7. Chưa dùng checkpoint `pen_parts_detector-3` vì toàn bộ metric của lần train đó bằng 0.

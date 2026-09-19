@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import sys
@@ -10,7 +10,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from pen_assembly.detection_dataset import format_detection_report, inspect_detection_dataset
+from assembly.detection_dataset import format_detection_report, inspect_detection_dataset
 
 
 def _configure_utf8_console() -> None:
@@ -29,10 +29,11 @@ def main() -> int:
     report = inspect_detection_dataset(args.data)
     print(format_detection_report(report))
     if not report.is_trainable:
-        print("\nBLOCKED: Hãy gán bounding box hợp lệ trước khi train YOLO.")
+        print("\nBLOCKED: HÃ£y gÃ¡n bounding box há»£p lá»‡ trÆ°á»›c khi train YOLO.")
         return 2
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

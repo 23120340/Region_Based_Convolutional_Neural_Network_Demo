@@ -26,10 +26,10 @@ from sklearn.metrics import f1_score
 from torch import nn
 from torch.utils.data import DataLoader
 
-from pen_assembly.action_config import load_action_model_config
-from pen_assembly.action_dataset import CachedActionWindowDataset
-from pen_assembly.models.action_net import PenAssemblyActionNet
-from pen_assembly.paths import DEFAULT_ACTION_ANNOTATIONS, DEFAULT_ACTION_CONFIG, DEFAULT_FEATURE_CACHE
+from assembly.action_config import load_action_model_config
+from assembly.action_dataset import CachedActionWindowDataset
+from assembly.models.action_net import PenAssemblyActionNet
+from assembly.paths import DEFAULT_ACTION_ANNOTATIONS, DEFAULT_ACTION_CONFIG, DEFAULT_FEATURE_CACHE
 
 
 def _run_epoch(model, loader, criterion, device, optimizer=None) -> tuple[float, list[int], list[int]]:
@@ -62,14 +62,19 @@ def main() -> int:
     parser.add_argument("--config", type=Path, default=DEFAULT_ACTION_CONFIG)
     parser.add_argument("--output", type=Path, default=ROOT / "artifacts" / "action_model")
     parser.add_argument("--device", default=None)
+    parser.add_argument(
+        "--allow-same-session",
+        action="store_true",
+        help="Cho phép chia train/val/test trong cùng session (dùng khi thử nghiệm trên 1 session)",
+    )
     args = parser.parse_args()
 
     if not args.annotations.is_file():
-        template = ROOT / "data" / "pen_actions" / "annotations_template.csv"
+        template = DEFAULT_ACTION_ANNOTATIONS.parent / "annotations_SAMPLE.csv"
         raise SystemExit(
             "Chưa có file annotation cho video hành động. "
             f"Hãy sao chép {template} thành {args.annotations}, "
-            "sau đó thay các dòng ví dụ bằng mốc thời gian thật."
+            "sau đó gán nhãn thời gian hoặc dùng scripts/annotate_actions.py."
         )
     if not args.features_dir.is_dir() or not any(args.features_dir.glob("*.npy")):
         raise SystemExit(
@@ -92,6 +97,7 @@ def main() -> int:
         sequence_length=temporal.sequence_length,
         stride=temporal.window_stride,
         expected_embedding_dim=config.spatial.embedding_dim,
+        allow_same_session=args.allow_same_session,
     )
     train_dataset = CachedActionWindowDataset(split="train", **dataset_args)
     val_dataset = CachedActionWindowDataset(split="val", **dataset_args)
@@ -159,3 +165,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

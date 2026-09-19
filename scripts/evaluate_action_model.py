@@ -22,10 +22,10 @@ import torch
 from sklearn.metrics import classification_report, confusion_matrix, f1_score
 from torch.utils.data import DataLoader
 
-from pen_assembly.action_config import load_action_model_config
-from pen_assembly.action_dataset import CachedActionWindowDataset
-from pen_assembly.models.action_net import PenAssemblyActionNet
-from pen_assembly.paths import DEFAULT_ACTION_ANNOTATIONS, DEFAULT_ACTION_CONFIG, DEFAULT_FEATURE_CACHE
+from assembly.action_config import load_action_model_config
+from assembly.action_dataset import CachedActionWindowDataset
+from assembly.models.action_net import PenAssemblyActionNet
+from assembly.paths import DEFAULT_ACTION_ANNOTATIONS, DEFAULT_ACTION_CONFIG, DEFAULT_FEATURE_CACHE
 
 
 def main() -> int:
@@ -37,6 +37,11 @@ def main() -> int:
     parser.add_argument("--split", choices=("val", "test"), default="test")
     parser.add_argument("--output", type=Path, default=ROOT / "artifacts" / "action_model" / "evaluation.json")
     parser.add_argument("--device", default=None)
+    parser.add_argument(
+        "--allow-same-session",
+        action="store_true",
+        help="Cho phép đánh giá trên tập split cùng session",
+    )
     args = parser.parse_args()
 
     if not args.checkpoint.is_file():
@@ -56,6 +61,7 @@ def main() -> int:
         temporal.sequence_length,
         temporal.window_stride,
         config.spatial.embedding_dim,
+        allow_same_session=args.allow_same_session,
     )
     loader = DataLoader(dataset, batch_size=config.training.batch_size, shuffle=False)
     device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
@@ -70,7 +76,7 @@ def main() -> int:
     ).to(device)
     checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
     if tuple(checkpoint.get("actions", ())) != config.actions:
-        raise SystemExit("Danh sách action trong checkpoint không khớp config")
+        raise SystemExit("Danh sÃ¡ch action trong checkpoint khÃ´ng khá»›p config")
     model.load_state_dict(checkpoint["model_state"])
     model.eval()
 
@@ -99,9 +105,10 @@ def main() -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({"split": args.split, "windows": len(dataset), "macro_f1": report["macro_f1"]}, indent=2))
-    print(f"Đã lưu báo cáo: {args.output}")
+    print(f"ÄÃ£ lÆ°u bÃ¡o cÃ¡o: {args.output}")
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
