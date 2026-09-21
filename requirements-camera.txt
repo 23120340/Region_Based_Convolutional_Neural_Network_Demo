@@ -1,5 +1,3 @@
-# Camera zero-shot MVP. The first run downloads the selected model checkpoint.
+# Camera runtime and closed-set YOLO training/inference.
 ultralytics
 opencv-python
-# Needed once by YOLO-World to encode custom text prompts.
-git+https://github.com/ultralytics/CLIP.git

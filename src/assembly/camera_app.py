@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 
 from .camera_config import CameraConfig, load_camera_config
@@ -11,7 +12,7 @@ from .fsm import FsmOutcome
 from .monitor import AssemblyMonitor, JsonlEventLogger
 from .paths import DEFAULT_CONFIG, DEFAULT_EVENT_LOG, PROJECT_ROOT
 from .smoother import TemporalDebouncer
-from .vision import ComponentDwellGate, ComponentSuggestion, Detection
+from .vision import ComponentDwellGate, Detection, EarbudAssemblyGate
 from .yolo_world_detector import YoloWorldDetector
 from .fsm import ConfigurableAssemblyTracker
 
@@ -52,14 +53,20 @@ def _draw_detection(cv2, frame, detection: Detection, config: CameraConfig) -> N
     _put_text(cv2, frame, caption, (x1 + 4, y1 - 6), 0.48, (20, 20, 20))
 
 
-def _open_capture(cv2, source: int | str):
+def _open_capture(cv2, source: int | str, config: CameraConfig):
     if isinstance(source, int) and sys.platform == "win32":
         capture = cv2.VideoCapture(source, cv2.CAP_DSHOW)
     else:
         capture = cv2.VideoCapture(source)
     if isinstance(source, int):
-        capture.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+        # These properties are best-effort: unsupported camera backends simply
+        # ignore them. A one-frame buffer prevents processing stale frames.
+        if sys.platform == "win32":
+            capture.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        capture.set(cv2.CAP_PROP_BUFFERSIZE, config.capture_buffer_size)
+        capture.set(cv2.CAP_PROP_FRAME_WIDTH, config.capture_width)
+        capture.set(cv2.CAP_PROP_FRAME_HEIGHT, config.capture_height)
+        capture.set(cv2.CAP_PROP_FPS, config.capture_fps)
     if not capture.isOpened():
         raise RuntimeError(f"Không mở được camera/video source {source!r}")
     return capture
@@ -150,14 +157,46 @@ def run_camera(
     if unknown_actions:
         raise ValueError(f"camera_config dùng action không tồn tại: {sorted(unknown_actions)}")
 
-    capture = _open_capture(cv2, source)
+    capture = _open_capture(cv2, source, camera_config)
     detector = YoloWorldDetector(camera_config, model_path=model_path, device=device)
-    gate = ComponentDwellGate(camera_config.action_map, camera_config.dwell_frames)
+    actual_width = round(capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+    actual_height = round(capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    actual_fps = capture.get(cv2.CAP_PROP_FPS)
+    precision = "FP16" if detector.use_half else "FP32"
+    print(
+        f"[PERF] Camera {actual_width}x{actual_height} @ {actual_fps:.1f} FPS | "
+        f"YOLO {camera_config.image_size}px, {precision}, device={detector.device}"
+    )
+    geometry = camera_config.earbud_geometry
+    if geometry is None:
+        gate = ComponentDwellGate(camera_config.action_map, camera_config.dwell_frames)
+    else:
+        gate = EarbudAssemblyGate(
+            open_case_label=geometry.open_case_label,
+            closed_case_label=geometry.closed_case_label,
+            earbud_labels=geometry.earbud_labels,
+            empty_slot_labels=geometry.empty_slot_labels,
+            dwell_frames=camera_config.dwell_frames,
+            containment_threshold=geometry.containment_threshold,
+        )
     active_source = source
+    local_video_wait_ms = 1
+    if isinstance(active_source, str) and Path(active_source).is_file():
+        video_fps = capture.get(cv2.CAP_PROP_FPS)
+        if video_fps > 0:
+            local_video_wait_ms = max(1, round(1000 / video_fps))
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="yolo-inference")
+    inference_future: Future[tuple[int, list[Detection], float]] | None = None
+    source_generation = 0
 
     frame_index = 0
     detections: list[Detection] = []
     last_inference_ms = 0.0
+    display_fps = 0.0
+    fps_started = time.perf_counter()
+    fps_frames = 0
+    frames_since_submit = camera_config.infer_every_n_frames
+    last_geometry_message: str | None = None
     suggestion = None
     outcome: FsmOutcome | None = None
     window_title = f"{assembly_config.project} - Real-time Camera"
@@ -172,27 +211,60 @@ def run_camera(
                 frame = cv2.flip(frame, 1)
             height, width = frame.shape[:2]
 
-            if frame_index % camera_config.infer_every_n_frames == 0:
-                started = time.perf_counter()
-                detections = detector.predict(frame)
-                last_inference_ms = (time.perf_counter() - started) * 1000
-                emitted = gate.update(
-                    detections,
-                    monitor.tracker.expected_actions,
-                    camera_config.work_zone,
-                    width,
-                    height,
-                )
-                if emitted is not None:
-                    if auto_advance:
+            # Collect a completed prediction without ever blocking the UI loop.
+            # Only one job can exist, which bounds memory and naturally drops
+            # intermediate frames when inference is slower than the camera.
+            if inference_future is not None and inference_future.done():
+                result_generation, result_detections, elapsed_ms = inference_future.result()
+                inference_future = None
+                if result_generation == source_generation:
+                    detections = result_detections
+                    last_inference_ms = elapsed_ms
+                    emitted = gate.update(
+                        detections,
+                        monitor.tracker.expected_actions,
+                        camera_config.work_zone,
+                        width,
+                        height,
+                    )
+                    if isinstance(gate, EarbudAssemblyGate):
+                        geometry_message = gate.status.message
+                        if geometry_message != last_geometry_message:
+                            print(f"[GEOMETRY] {geometry_message}")
+                            last_geometry_message = geometry_message
+                    if emitted is not None and auto_advance:
                         outcome = monitor.submit_stable_action(emitted.action)
                         print(f"[{outcome.type}] {outcome.action}: {outcome.message}")
                         suggestion = None
-                        gate.acknowledge()
-                suggestion = gate.current_suggestion
+                        gate.acknowledge(rearm=outcome.type == "VIOLATION")
+                    suggestion = gate.current_suggestion
+
+            frames_since_submit += 1
+            if (
+                inference_future is None
+                and frames_since_submit >= camera_config.infer_every_n_frames
+            ):
+                submitted_frame = frame.copy()
+                submitted_generation = source_generation
+
+                def infer() -> tuple[int, list[Detection], float]:
+                    started = time.perf_counter()
+                    result = detector.predict(submitted_frame)
+                    return submitted_generation, result, (time.perf_counter() - started) * 1000
+
+                inference_future = executor.submit(infer)
+                frames_since_submit = 0
+
+            fps_frames += 1
+            now = time.perf_counter()
+            if now - fps_started >= 0.5:
+                display_fps = fps_frames / (now - fps_started)
+                fps_started = now
+                fps_frames = 0
 
             overlay = frame.copy()
-            cv2.rectangle(overlay, (0, 0), (width, 105), (18, 24, 38), -1)
+            panel_height = 132 if geometry is not None else 105
+            cv2.rectangle(overlay, (0, 0), (width, panel_height), (18, 24, 38), -1)
             cv2.addWeighted(overlay, 0.85, frame, 0.15, 0, frame)
             zone_box = camera_config.work_zone.to_pixels(width, height)
             cv2.rectangle(frame, zone_box[:2], zone_box[2:], (0, 210, 255), 2)
@@ -215,10 +287,24 @@ def run_camera(
                 _put_text(cv2, frame, "> Move expected item into WORK ZONE", (18, 64), 0.55, (190, 210, 255))
 
             step_hint = f"1-{len(action_keys)}" if action_keys else "no"
-            _put_text(cv2, frame, f"Keys: SPACE (confirm), {step_hint} (step), R (reset), C (cam), Q (quit)  |  Infer: {last_inference_ms:.0f}ms", (18, 92), 0.48, (170, 180, 190))
+            infer_fps = 1000.0 / last_inference_ms if last_inference_ms > 0 else 0.0
+            _put_text(cv2, frame, f"Keys: SPACE, {step_hint}, R, C, Q  |  Display: {display_fps:.1f} FPS  |  AI: {infer_fps:.1f} FPS ({last_inference_ms:.0f}ms)", (18, 92), 0.48, (170, 180, 190))
+            if isinstance(gate, EarbudAssemblyGate):
+                status = gate.status
+                status_color = (70, 70, 255) if status.is_error else (90, 230, 130)
+                _put_text(
+                    cv2,
+                    frame,
+                    f"Geometry: case={status.case_state} | inside={status.earbuds_inside}/2 | empty={status.empty_slots}/2 | {'ERROR' if status.is_error else 'OK'}",
+                    (18, 119),
+                    0.46,
+                    status_color,
+                )
 
             cv2.imshow(window_title, frame)
-            key = cv2.waitKey(1) & 0xFF
+            # Local video files otherwise run as fast as decoding allows after
+            # inference is moved off the display thread.
+            key = cv2.waitKey(local_video_wait_ms) & 0xFF
             if max_frames is not None and frame_index >= max_frames:
                 break
             if key in (ord("q"), 27):
@@ -236,12 +322,14 @@ def run_camera(
                 available = discover_camera_indices(cv2, max_camera_index)
                 target_source = next_camera_index(previous_source, available)
                 try:
-                    capture = _open_capture(cv2, target_source)
+                    capture = _open_capture(cv2, target_source, camera_config)
                 except RuntimeError as error:
                     print(f"Không chuyển được camera: {error}")
-                    capture = _open_capture(cv2, previous_source)
+                    capture = _open_capture(cv2, previous_source, camera_config)
                 else:
                     active_source = target_source
+                    source_generation += 1
+                    last_geometry_message = None
                     detections = []
                     suggestion = None
                     outcome = None
@@ -260,7 +348,7 @@ def run_camera(
                 outcome = monitor.submit_stable_action(suggestion.action)
                 print(f"[{outcome.type}] {outcome.action}: {outcome.message}")
                 suggestion = None
-                gate.acknowledge()
+                gate.acknowledge(rearm=outcome.type == "VIOLATION")
             elif key in action_keys:
                 outcome = monitor.submit_stable_action(action_keys[key])
                 print(f"[{outcome.type}] {outcome.action}: {outcome.message}")
@@ -269,6 +357,7 @@ def run_camera(
     finally:
         capture.release()
         cv2.destroyAllWindows()
+        executor.shutdown(wait=True, cancel_futures=True)
 
 
 def main() -> int:

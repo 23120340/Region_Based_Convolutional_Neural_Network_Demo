@@ -136,7 +136,7 @@ def run_camera_mode(
     print()
     print("PhÃ­m táº¯t trong cá»­a sá»• camera:")
     print("  SPACE  â€” xÃ¡c nháº­n hÃ nh Ä‘á»™ng hiá»‡n táº¡i")
-    print("  1-3    â€” nháº­p tay bÆ°á»›c (pick_case / insert_earbud / close_case)")
+    print("  1-4    — nhập tay (open_case / tai 1 / tai 2 / close_case)")
     print("  R      â€” Ä‘áº·t láº¡i chu trÃ¬nh")
     print("  S      â€” chá»¥p mÃ n hÃ¬nh")
     print("  C      â€” chuyá»ƒn camera")
@@ -313,4 +313,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

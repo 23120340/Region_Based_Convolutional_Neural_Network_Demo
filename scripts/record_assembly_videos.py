@@ -75,7 +75,7 @@ def main() -> int:
             logged_path = current_path.relative_to(ROOT).as_posix()
         except ValueError:
             logged_path = str(current_path.resolve())
-        
+
         # Sửa lỗi video bị tua nhanh (Auto-correct FPS)
         cap = cv2.VideoCapture(str(current_path))
         if cap.isOpened():

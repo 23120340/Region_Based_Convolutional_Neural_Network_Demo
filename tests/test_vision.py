@@ -6,7 +6,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from assembly.vision import ComponentDwellGate, Detection, NormalizedZone
+from assembly.vision import (
+    ComponentDwellGate,
+    Detection,
+    EarbudAssemblyGate,
+    NormalizedZone,
+)
 
 
 class VisionLogicTests(unittest.TestCase):
@@ -68,6 +73,135 @@ class VisionLogicTests(unittest.TestCase):
             NormalizedZone(0.8, 0.2, 0.4, 0.9)
 
 
+class EarbudGeometryGateTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.zone = NormalizedZone(0.05, 0.05, 0.95, 0.95)
+        self.gate = EarbudAssemblyGate(
+            open_case_label="open_case",
+            closed_case_label="close_case",
+            earbud_labels=["earbud"],
+            empty_slot_labels=["empty_left", "empty_right"],
+            dwell_frames=2,
+            containment_threshold=0.6,
+        )
+        self.case = self.detection("open_case", (10, 10, 90, 90))
+        self.left_slot = self.detection("empty_left", (20, 40, 38, 68))
+        self.right_slot = self.detection("empty_right", (62, 40, 80, 68))
+        self.left_earbud = self.detection("earbud", (20, 40, 38, 68))
+        self.right_earbud = self.detection("earbud", (62, 40, 80, 68), 0.88)
+
+    @staticmethod
+    def detection(
+        label: str,
+        box: tuple[int, int, int, int],
+        confidence: float = 0.9,
+    ) -> Detection:
+        return Detection(label, label, confidence, box)
+
+    def stable_update(self, detections, expected):
+        result = None
+        for _ in range(2):
+            result = self.gate.update(detections, expected, self.zone, 100, 100) or result
+        return result
+
+    def test_full_two_earbud_geometry_sequence(self) -> None:
+        opened = self.stable_update(
+            [self.case, self.left_slot, self.right_slot], ["open_case"]
+        )
+        self.assertEqual(opened.action, "open_case")
+        self.gate.acknowledge()
+
+        first = self.stable_update(
+            [self.case, self.left_earbud, self.right_slot], ["insert_earbud_1"]
+        )
+        self.assertEqual(first.action, "insert_earbud_1")
+        self.assertEqual(self.gate.status.empty_slots, 1)
+        self.assertEqual(self.gate.status.earbuds_inside, 1)
+        self.gate.acknowledge()
+
+        second = self.stable_update(
+            [self.case, self.left_earbud, self.right_earbud], ["insert_earbud_2"]
+        )
+        self.assertEqual(second.action, "insert_earbud_2")
+        self.assertEqual(self.gate.status.empty_slots, 0)
+        self.assertEqual(self.gate.status.earbuds_inside, 2)
+
+    def test_earbud_outside_case_never_counts_as_inserted(self) -> None:
+        outside = self.detection("earbud", (92, 40, 99, 60))
+        result = self.stable_update(
+            [self.case, outside, self.right_slot], ["insert_earbud_1"]
+        )
+        self.assertIsNone(result)
+        self.assertEqual(self.gate.status.earbuds_inside, 0)
+        self.assertTrue(self.gate.status.is_error)
+        self.assertIn("chưa nằm bên trong", self.gate.status.message)
+
+    def test_removing_first_earbud_emits_violation_candidate(self) -> None:
+        self.stable_update(
+            [self.case, self.left_slot, self.right_slot], ["open_case"]
+        )
+        self.gate.acknowledge()
+        self.stable_update(
+            [self.case, self.left_earbud, self.right_slot], ["insert_earbud_1"]
+        )
+        self.gate.acknowledge()
+
+        removed = self.stable_update(
+            [self.case, self.left_slot, self.right_slot], ["insert_earbud_2"]
+        )
+
+        self.assertEqual(removed.action, "remove_earbud_to_zero")
+        self.assertFalse(removed.is_expected)
+        self.assertTrue(self.gate.status.is_error)
+        self.assertIn("tháo ra", self.gate.status.message)
+
+        self.gate.acknowledge(rearm=True)
+        reinserted = self.stable_update(
+            [self.case, self.left_earbud, self.right_slot], ["insert_earbud_1"]
+        )
+        self.assertEqual(reinserted.action, "insert_earbud_1")
+
+    def test_removing_one_of_two_earbuds_emits_violation_candidate(self) -> None:
+        removed = self.stable_update(
+            [self.case, self.left_earbud, self.right_slot], ["close_case"]
+        )
+
+        self.assertEqual(removed.action, "remove_earbud_to_one")
+        self.assertFalse(removed.is_expected)
+        self.assertEqual(self.gate.status.empty_slots, 1)
+        self.assertTrue(self.gate.status.is_error)
+
+        self.gate.acknowledge(rearm=True)
+        reinserted = self.stable_update(
+            [self.case, self.left_earbud, self.right_earbud], ["insert_earbud_2"]
+        )
+        self.assertEqual(reinserted.action, "insert_earbud_2")
+
+    def test_missing_slots_do_not_pass_without_two_inside_earbuds(self) -> None:
+        result = self.stable_update([self.case], ["insert_earbud_2"])
+        self.assertIsNone(result)
+        self.assertIn("mới xác minh 0/2", self.gate.status.message)
+
+    def test_closing_early_emits_violation_candidate(self) -> None:
+        closed = self.detection("close_case", (10, 10, 90, 90))
+        result = self.stable_update([closed], ["insert_earbud_1"])
+        self.assertEqual(result.action, "close_case")
+        self.assertFalse(result.is_expected)
+        self.assertTrue(self.gate.status.is_error)
+
+    def test_violation_rearms_only_after_visual_state_changes(self) -> None:
+        closed = self.detection("close_case", (10, 10, 90, 90))
+        first = self.stable_update([closed], ["insert_earbud_1"])
+        self.assertIsNotNone(first)
+        self.gate.acknowledge(rearm=True)
+        held = self.stable_update([closed], ["insert_earbud_1"])
+        self.assertIsNone(held)
+        self.stable_update(
+            [self.case, self.left_slot, self.right_slot], ["insert_earbud_1"]
+        )
+        second = self.stable_update([closed], ["insert_earbud_1"])
+        self.assertIsNotNone(second)
+
+
 if __name__ == "__main__":
     unittest.main()
-

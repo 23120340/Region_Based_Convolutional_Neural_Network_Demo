@@ -76,7 +76,7 @@ def main() -> int:
     ).to(device)
     checkpoint = torch.load(args.checkpoint, map_location=device, weights_only=False)
     if tuple(checkpoint.get("actions", ())) != config.actions:
-        raise SystemExit("Danh sÃ¡ch action trong checkpoint khÃ´ng khá»›p config")
+        raise SystemExit("Danh sách action trong checkpoint không khớp config")
     model.load_state_dict(checkpoint["model_state"])
     model.eval()
 
@@ -105,7 +105,7 @@ def main() -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({"split": args.split, "windows": len(dataset), "macro_f1": report["macro_f1"]}, indent=2))
-    print(f"ÄÃ£ lÆ°u bÃ¡o cÃ¡o: {args.output}")
+    print(f"Đã lưu báo cáo: {args.output}")
     return 0
 
 

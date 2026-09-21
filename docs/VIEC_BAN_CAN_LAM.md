@@ -1,224 +1,605 @@
-﻿# Viá»‡c báº¡n cáº§n lÃ m Ä‘á»ƒ hoÃ n thiá»‡n há»‡ thá»‘ng nháº­n diá»‡n vÃ  kiá»ƒm tra quy trÃ¬nh láº¯p rÃ¡p
+# Kế hoạch làm lại hệ thống Hybrid giám sát lắp tai nghe
 
-> Cáº­p nháº­t toÃ n diá»‡n ngÃ y: **08/09/2026**  
-> Dá»± Ã¡n Ã¡p dá»¥ng cho cáº£ hai bÃ i toÃ¡n: **Láº¯p rÃ¡p Há»™p tai nghe khÃ´ng dÃ¢y (Earbud Assembly)** vÃ  **Láº¯p rÃ¡p BÃºt bi (Pen Assembly)**.
+> Cập nhật geometry-only mới nhất (`open_case → tai 1 → tai 2 → close_case`) đã được chuyển vào [VIEC_BAN_CAN_LAM_GEOMETRY.md](VIEC_BAN_CAN_LAM_GEOMETRY.md). Tài liệu hiện tại vẫn được giữ nguyên để bảo toàn kế hoạch Hybrid/ViT–BiLSTM và các ghi chú dataset trước đó.
 
----
+Cập nhật và đối chiếu với repository: **21/09/2026**.
 
-## 0. PhÃ¢n cÃ´ng vÃ  tráº¡ng thÃ¡i thá»±c hiá»‡n
+Tài liệu này là kế hoạch thực hiện lại dự án từ baseline hiện có. Các số liệu trong phần “Hiện trạng” được đọc trực tiếp từ code, dataset và artifact đang có; các con số trong phần “Tiêu chí nghiệm thu” là **mục tiêu đề xuất**, chưa phải kết quả đã đạt.
 
-KÃ½ hiá»‡u quy Æ°á»›c:
-- **ÄÃƒ LÃ€M (Ká»¹ sÆ°/Há»‡ thá»‘ng)**: Pháº§n ká»¹ thuáº­t, mÃ£ nguá»“n, script, cáº¥u hÃ¬nh vÃ  unit test Ä‘Ã£ hoÃ n thiá»‡n vÃ  kiá»ƒm tra tá»± Ä‘á»™ng trong repository.
-- **Báº N ÄÃƒ LÃ€M**: Dá»¯ liá»‡u, cáº¥u hÃ¬nh vÃ  káº¿t quáº£ thá»±c nghiá»‡m báº¡n Ä‘Ã£ Ä‘Æ°a vÃ o dá»± Ã¡n.
-- **Báº N Cáº¦N LÃ€M**: Cáº§n camera, váº­t tháº­t, thao tÃ¡c gÃ¡n nhÃ£n trÃªn CVAT/Roboflow hoáº·c quyáº¿t Ä‘á»‹nh nghiá»‡p vá»¥ cá»§a báº¡n; há»‡ thá»‘ng khÃ´ng thá»ƒ tá»± Ä‘oÃ¡n thay báº¡n.
-- **MÃŒNH LÃ€M SAU**: MÃ¬nh sáº½ tiáº¿p tá»¥c ngay khi báº¡n Ä‘Æ°a dá»¯ liá»‡u Ä‘Ã£ lÃ m sáº¡ch vÃ o Ä‘Ãºng thÆ° má»¥c.
+## 1. Mục tiêu và phạm vi
 
-| Tráº¡ng thÃ¡i | Háº¡ng má»¥c cÃ´ng viá»‡c | Chi tiáº¿t ká»¹ thuáº­t |
-|---|---|---|
-| **Báº N ÄÃƒ LÃ€M** | Chuáº©n bá»‹ dataset tai nghe | Cung cáº¥p 151 áº£nh, 245 bounding box chia sáºµn 3 split (`datasets/earbud_parts`) |
-| **Báº N ÄÃƒ LÃ€M** | Táº¡o cáº¥u hÃ¬nh FSM, camera vÃ  action | Táº¡o `earbud_fsm_config.json`, `camera_earbud_config.json`, `action_earbud_config.json` |
-| **Báº N ÄÃƒ LÃ€M** | Huáº¥n luyá»‡n thá»­ baseline detector | Train YOLOv8 thÃ nh cÃ´ng táº¡i `artifacts/training/earbud_detector/weights/best.pt` |
-| **ÄÃƒ LÃ€M** | Sá»­a lá»—i chÃ­nh táº£ thÆ° má»¥c | Äá»•i `datasets/earbub_parts` thÃ nh `datasets/earbud_parts`, sá»­a Ä‘Æ°á»ng dáº«n trong `data.yaml` |
-| **ÄÃƒ LÃ€M** | Tá»± Ä‘á»™ng Ä‘áº·t tÃªn model detector | NÃ¢ng cáº¥p `scripts/train_detector.py` tá»± nháº­n diá»‡n dá»¯ liá»‡u earbud Ä‘á»ƒ lÆ°u vÃ o `earbud_detector` |
-| **ÄÃƒ LÃ€M** | Tá»•ng quÃ¡t hÃ³a phÃ­m táº¯t camera | PhÃ­m sá»‘ `1..N` tá»± Ä‘á»™ng Ã¡nh xáº¡ theo quy trÃ¬nh FSM (tai nghe dÃ¹ng 1â€“3, bÃºt dÃ¹ng 1â€“5) |
-| **ÄÃƒ LÃ€M** | Má»Ÿ rá»™ng script quay video hÃ nh Ä‘á»™ng | `scripts/record_assembly_videos.py` há»— trá»£ `--project earbud` vÃ  ká»‹ch báº£n linh hoáº¡t |
-| **ÄÃƒ LÃ€M** | Bá»• sung hÃ m kiá»ƒm tra khÃ´ng gian hÃ¬nh há»c | Bá»• sung `is_inside`, `overlap_ratio_with`, `contains_point` trong `src/assembly/vision.py` |
-| **ÄÃƒ LÃ€M** | Kiá»ƒm thá»­ tá»± Ä‘á»™ng toÃ n diá»‡n | ToÃ n bá»™ 41/41 unit test Ä‘áº¡t `OK`, kiá»ƒm tra cáº£ FSM tai nghe, FSM bÃºt vÃ  hÃ¬nh há»c |
-| **Báº N Cáº¦N LÃ€M** | Sá»­a lá»—i nhÃ£n vÃ  khá»­ rÃ² rá»‰ dataset | Xá»­ lÃ½ 56 áº£nh rá»—ng, xÃ³a box lá»—i/trÃ¹ng, quay session má»›i Ä‘á»™c láº­p cho val vÃ  test |
-| **Báº N Cáº¦N LÃ€M** | Chá»‘t quyáº¿t Ä‘á»‹nh thiáº¿t káº¿ FSM | Chá»n láº¯p 1 tai nghe hay kiá»ƒm tra Ä‘á»§ cáº£ 2 tai nghe (trÃ¡i vÃ  pháº£i) |
-| **Báº N Cáº¦N LÃ€M** | Quay video hÃ nh Ä‘á»™ng cÃ³ timestamp | Quay cÃ¡c chu trÃ¬nh tai nghe báº±ng `record_assembly_videos.py` vÃ  gÃ¡n nhÃ£n thá»i gian |
-| **MÃŒNH LÃ€M SAU** | Huáº¥n luyá»‡n láº¡i detector chuáº©n | Khi cÃ³ dataset sáº¡ch, train láº¡i detector, Ä‘Ã¡nh giÃ¡ mAP chuáº©n xÃ¡c trÃªn test set Ä‘á»™c láº­p |
-| **MÃŒNH LÃ€M SAU** | TÃ­ch há»£p xÃ¡c thá»±c hÃ¬nh há»c nÃ¢ng cao | GhÃ©p Ä‘iá»u kiá»‡n Earbud náº±m bÃªn trong Case/Empty Slot vÃ o logic realtime |
+Hệ thống quan sát một chu trình:
 
----
-
-## 1. ÄÃ¡nh giÃ¡ chuyÃªn sÃ¢u: Háº¡n cháº¿ cá»§a Dataset Tai nghe hiá»‡n táº¡i
-
-> [!WARNING]
-> **Káº¿t luáº­n cá»‘t lÃµi:** Dataset earbud **Ä‘á»§ Ä‘á»ƒ train thá»­ má»™t baseline**, nhÆ°ng **chÆ°a Ä‘á»§ sáº¡ch vÃ  Ä‘á»™c láº­p Ä‘á»ƒ Ä‘Ã¡nh giÃ¡ hoáº·c dÃ¹ng realtime Ä‘Ã¡ng tin cáº­y**. Tráº¡ng thÃ¡i `Trainable: YES` chá»‰ xÃ¡c nháº­n Ä‘á»‹nh dáº¡ng file YOLO há»£p lá»‡ vá» máº·t ká»¹ thuáº­t, khÃ´ng Ä‘áº£m báº£o tÃ­nh Ä‘á»™c láº­p hay cháº¥t lÆ°á»£ng dá»¯ liá»‡u.
-
-### 1.1. CÃ¡c váº¥n Ä‘á» phÃ¡t hiá»‡n trong Ä‘á»£t kiá»ƒm tra
-
-| Váº¥n Ä‘á» | Káº¿t quáº£ phÃ¡t hiá»‡n | TÃ¡c Ä‘á»™ng thá»±c táº¿ |
-|---|---|---|
-| **RÃ² rá»‰ dá»¯ liá»‡u (Data Leakage)** | CÃ³ **70 cáº·p frame liÃªn tiáº¿p** náº±m khÃ¡c split. Cá»¥ thá»ƒ: Frame 008 á»Ÿ `test`, Frame 009 á»Ÿ `train`, Frame 010 á»Ÿ `validation` vÃ  gáº§n nhÆ° cÃ¹ng má»™t cáº£nh quay | Model há»c thuá»™c bá»‘i cáº£nh thay vÃ¬ há»c Ä‘áº·c trÆ°ng tá»•ng quÃ¡t. Äiá»ƒm sá»‘ mAP trÃªn test set hiá»‡n táº¡i bá»‹ thá»•i phá»“ng giáº£ táº¡o |
-| **Nguá»“n dá»¯ liá»‡u Ä‘Æ¡n Ä‘iá»‡u** | ToÃ n bá»™ 151 áº£nh dÆ°á»ng nhÆ° trÃ­ch tá»« cÃ¹ng má»™t video, cÃ¹ng má»™t ngÆ°á»i thá»±c hiá»‡n, cÃ¹ng gÃ³c camera vÃ  Ä‘iá»u kiá»‡n Ã¡nh sÃ¡ng | Äem mÃ´ hÃ¬nh sang mÃ¡y khÃ¡c, gÃ³c quay khÃ¡c hoáº·c Ã¡nh sÃ¡ng khÃ¡c sáº½ sá»¥t giáº£m Ä‘á»™ chÃ­nh xÃ¡c |
-| **Label rá»—ng thiáº¿u sÃ³t** | **56/151 áº£nh cÃ³ label rá»—ng**. Kiá»ƒm tra frame 008â€“010 tháº¥y há»™p sáº¡c rÃµ rÃ ng nhÆ°ng khÃ´ng Ä‘Æ°á»£c gÃ¡n nhÃ£n `Case` | YOLO coi cÃ¡c áº£nh nÃ y lÃ  background Ã¢m tÃ­nh; Ä‘iá»u nÃ y dáº¡y máº¡ng neuron pháº¡t cÃ¡c dá»± Ä‘oÃ¡n Case Ä‘Ãºng |
-| **Bounding box lá»—i** | CÃ³ 3 box `Earbud` chá»‰ khoáº£ng **1â€“6 pixel** | GÃ¢y nhiá»…u anchor vÃ  tÃ­nh toÃ¡n hÃ m máº¥t mÃ¡t (loss) |
-| **Bounding box trÃ¹ng láº·p** | Frame 013 chá»‰ tháº¥y 2 earbud nhÆ°ng cÃ³ tá»›i **4 box `Earbud`**; tá»•ng cá»™ng 7 áº£nh cÃ³ trÃªn hai box Earbud | GÃ¢y nháº§m láº«n cho thuáº­t toÃ¡n triá»‡t tiÃªu box trÃ¹ng (NMS) |
-| **Test set quÃ¡ má»ng** | Táº­p test chá»‰ cÃ³ **4 `Case`**, **11 `Earbud`**, **1 `Empty_Slot`** | Máº«u kiá»ƒm thá»­ quÃ¡ Ã­t, khÃ´ng Ä‘á»§ cÆ¡ sá»Ÿ thá»‘ng kÃª Ä‘á»ƒ Ä‘Ã¡nh giÃ¡ mAP theo tá»«ng lá»›p |
-| **Máº¥t cÃ¢n báº±ng lá»›p** | `Empty_Slot` chá»‰ cÃ³ **38 box**, tháº¥p hÆ¡n ráº¥t nhiá»u so vá»›i 144 box `Earbud` | Detector há»c nháº­n diá»‡n khe trá»‘ng kÃ©m hÆ¡n háº³n so vá»›i tai nghe |
-
-> [!CAUTION]
-> **VÃ¬ váº­y: Tuyá»‡t Ä‘á»‘i chÆ°a nÃªn tin cáº­y mAP thu Ä‘Æ°á»£c tá»« táº­p test hiá»‡n táº¡i Ä‘á»ƒ bÃ¡o cÃ¡o hay Ä‘Ã¡nh giÃ¡ sáº£n pháº©m.**
-
----
-
-## 2. Báº¡n cáº§n sá»­a dataset tai nghe nhÆ° tháº¿ nÃ o?
-
-### 2.1. NÄƒm viá»‡c cáº§n sá»­a ngay trÃªn nhÃ£n hiá»‡n cÃ³
-1. **Kiá»ƒm tra láº¡i toÃ n bá»™ 56 label rá»—ng:** Má»Ÿ tá»«ng áº£nh trong 56 áº£nh nÃ y. Náº¿u áº£nh cÃ³ `Case`, `Earbud` hoáº·c `Empty_Slot`, báº¯t buá»™c pháº£i khoanh box Ä‘á»§. Chá»‰ Ä‘á»ƒ label rá»—ng náº¿u áº£nh hoÃ n toÃ n khÃ´ng cÃ³ linh kiá»‡n nÃ o (áº£nh bÃ n trá»‘ng hoáº·c chá»‰ cÃ³ tay).
-2. **Chuáº©n hÃ³a sá»‘ lÆ°á»£ng box Earbud:** Má»—i earbud váº­t lÃ½ chá»‰ cÃ³ Ä‘Ãºng má»™t bounding box Ã´m sÃ¡t. Tuyá»‡t Ä‘á»‘i khÃ´ng váº½ thÃªm box to bao cáº£ hai earbud cÃ¹ng lÃºc.
-3. **XÃ³a/sá»­a 3 box rÃ¡c:** TÃ¬m vÃ  xÃ³a cÃ¡c box kÃ­ch thÆ°á»›c 1â€“6 pixel trong dá»¯ liá»‡u.
-4. **Khá»­ rÃ² rá»‰ dá»¯ liá»‡u (Quan trá»ng nháº¥t):** KhÃ´ng chia ngáº«u nhiÃªn cÃ¡c frame trÃ­ch tá»« cÃ¹ng má»™t video vÃ o train, val, test. ToÃ n bá»™ 151 áº£nh tá»« video Ä‘áº§u tiÃªn nÃ y **pháº£i Ä‘Æ°á»£c gom toÃ n bá»™ vÃ o táº­p `train`**.
-5. **Quay session má»›i Ä‘á»™c láº­p cho validation vÃ  test:**
-   - Táº­p `validation` pháº£i lÃ  má»™t buá»•i quay riÃªng biá»‡t (thay Ä‘á»•i gÃ³c quay hoáº·c ná»n nháº¹).
-   - Táº­p `test` pháº£i lÃ  má»™t buá»•i quay Ä‘á»™c láº­p hoÃ n toÃ n (ngÆ°á»i khÃ¡c lÃ m hoáº·c ngÃ y khÃ¡c) vÃ  Ä‘Æ°á»£c giá»¯ kÃ­n Ä‘á»ƒ cháº¥m Ä‘iá»ƒm.
-
-### 2.2. Má»¥c tiÃªu sá»‘ lÆ°á»£ng cho Ä‘á»£t thu tháº­p tiáº¿p theo
-Äá»ƒ mÃ´ hÃ¬nh phÃ¡t hiá»‡n á»•n Ä‘á»‹nh vÃ  Ä‘Ã¡nh giÃ¡ tin cáº­y, bá»™ dá»¯ liá»‡u vÃ²ng tiáº¿p theo nÃªn Ä‘áº¡t:
-- **300â€“500 áº£nh** tháº­t sá»± khÃ¡c nhau.
-- `Case`: Ãt nháº¥t **150 box**.
-- `Earbud`: **250â€“300 box**.
-- `Empty_Slot`: Ãt nháº¥t **150 box**.
-- Má»—i lá»›p trong táº­p test nÃªn cÃ³ tá»‘i thiá»ƒu **30â€“50 box**.
-- **10â€“20% áº£nh Ã¢m tÃ­nh tháº­t:** BÃ n trá»‘ng, chá»‰ cÃ³ tay, hoáº·c cÃ¡c váº­t gÃ¢y nháº§m.
-
-### 2.3. CÃ¡c tÃ¬nh huá»‘ng báº¯t buá»™c pháº£i chá»¥p thÃªm
-- Há»™p sáº¡c á»Ÿ cáº£ hai tráº¡ng thÃ¡i: **má»Ÿ náº¯p** vÃ  **Ä‘Ã³ng náº¯p**, xoay á»Ÿ nhiá»u gÃ³c khÃ¡c nhau.
-- CÃ¡c tráº¡ng thÃ¡i khe cáº¯m: **má»™t khe trá»‘ng**, **hai khe trá»‘ng**, vÃ  **khÃ´ng cÃ²n khe trá»‘ng nÃ o** (Ä‘Ã£ cáº¯m Ä‘á»§ hai tai).
-- Tráº¡ng thÃ¡i tai nghe: Má»™t tai nghe riÃªng láº» vÃ  hai tai nghe cÃ¹ng xuáº¥t hiá»‡n.
-- Tay ngÆ°á»i thao tÃ¡c: Äang cáº§m, Ä‘ang che má»™t pháº§n (20â€“40% váº­t thá»ƒ).
-- Vá»‹ trÃ­ thao tÃ¡c: Tai nghe náº±m ngoÃ i há»™p, náº±m gáº§n miá»‡ng há»™p, vÃ  Ä‘ang Ä‘Æ°á»£c Ä‘áº·t dá»Ÿ vÃ o khe.
-- Äa dáº¡ng mÃ´i trÆ°á»ng: Thay Ä‘á»•i Ã¡nh sÃ¡ng (sÃ¡ng/tá»‘i hÆ¡n), ná»n bÃ n, khoáº£ng cÃ¡ch camera vÃ  ngÆ°á»i thao tÃ¡c khÃ¡c nhau.
-- Váº­t gÃ¢y nháº§m láº«n (negative distractors): Chuá»™t mÃ¡y tÃ­nh, há»™p nhá», cá»§ sáº¡c Ä‘iá»‡n thoáº¡i, tai nghe cÃ³ dÃ¢y.
-
----
-
-## 3. Kiá»ƒm tra cáº¥u hÃ¬nh vÃ  Tráº¡ng thÃ¡i sá»­a lá»—i tÃ­ch há»£p
-
-### 3.1. Káº¿t quáº£ kiá»ƒm tra FSM
-Ba file cáº¥u hÃ¬nh JSON trong thÆ° má»¥c `configs/` Ä‘á»u há»£p lá»‡ cÃº phÃ¡p. Logic mÃ¡y tráº¡ng thÃ¡i FSM Ä‘Ã£ Ä‘Æ°á»£c kiá»ƒm thá»­ tá»± Ä‘á»™ng vÃ  cháº¡y chÃ­nh xÃ¡c:
 ```text
-pick_case â†’ insert_earbud â†’ close_case â†’ COMPLETED
+đặt hộp mở nắp
+→ lắp tai nghe thứ nhất
+→ lắp tai nghe thứ hai
+→ đóng nắp
 ```
-FSM báº¯t lá»—i thÃ nh cÃ´ng: Náº¿u ngÆ°á»i dÃ¹ng thá»±c hiá»‡n `insert_earbud` trÆ°á»›c khi cÃ³ `pick_case`, há»‡ thá»‘ng láº­p tá»©c bÃ¡o lá»—i `VIOLATION`: *"ChÆ°a Ä‘áº·t há»™p sáº¡c vÃ o vÃ¹ng láº¯p mÃ  Ä‘Ã£ thao tÃ¡c tai nghe."*
 
-### 3.2. Báº£ng theo dÃµi cÃ¡c Ä‘iá»ƒm tÃ­ch há»£p há»‡ thá»‘ng
+Hệ thống cần trả lời ba câu hỏi khác nhau:
 
-| Váº¥n Ä‘á» tÃ­ch há»£p phÃ¡t hiá»‡n | Tráº¡ng thÃ¡i ká»¹ thuáº­t | HÆ°á»›ng dáº«n & Giáº£i phÃ¡p Ä‘Ã£ thá»±c hiá»‡n |
+1. **Trong ảnh có gì và ở đâu?** — YOLO nhận diện hộp, tai nghe, khe trống, tay và trạng thái nắp.
+2. **Người dùng đang làm gì?** — ViT tạo embedding từng frame, BiLSTM phân loại hành động theo cửa sổ thời gian.
+3. **Thao tác có làm thay đổi trạng thái vật lý đúng như mong đợi không?** — Fusion Engine đối chiếu hành động với detection, sau đó FSM kiểm tra thứ tự.
+
+Đầu ra mong muốn cho mỗi sự kiện:
+
+- `PASS`: hoàn thành đúng một bước.
+- `VIOLATION`: có bằng chứng đủ rõ về thao tác sai.
+- `WAITING/UNCERTAIN`: chưa đủ bằng chứng; không tự suy diễn thành PASS hay lỗi.
+- Log có timestamp, cycle ID, state trước/sau, dự đoán action, confidence, trạng thái vật thể và lý do quyết định.
+
+Đây vẫn là prototype nghiên cứu. Bounding box 2D không chứng minh được tiếp xúc điện hoặc chất lượng sạc, vì vậy chưa được dùng như thiết bị kiểm định sản xuất.
+
+## 2. Kiến trúc mục tiêu
+
+```text
+Camera/video
+  ├─ YOLO
+  │    ├─ Case_Open / Case_Closed
+  │    ├─ Left_Earbud / Right_Earbud
+  │    ├─ Empty_Slot_Left / Empty_Slot_Right
+  │    └─ Hand
+  │
+  ├─ ViT encoder → embedding cache → BiLSTM → action + confidence
+  │
+  └─ Fusion Engine
+       ├─ ổn định detection qua thời gian
+       ├─ kiểm tra containment/occupancy/chuyển trạng thái
+       ├─ kết hợp action evidence
+       └─ phát event đã xác minh
+              ↓
+             FSM → PASS / VIOLATION / hướng dẫn bước kế tiếp
+              ↓
+       JSONL + ảnh/video bằng chứng + báo cáo metric
+```
+
+Nguyên tắc quan trọng: model chỉ tạo **bằng chứng**; Fusion và FSM mới quyết định một bước có hoàn tất hay vi phạm hay không.
+
+## 3. Hiện trạng đã kiểm chứng
+
+### 3.1. Code và runtime
+
+| Hạng mục | Hiện trạng | Ghi chú |
 |---|---|---|
-| **ThÆ° má»¥c sai tÃªn `earbub_parts`** | **ÄÃƒ Sá»¬A** | ÄÃ£ Ä‘á»•i tÃªn thÃ nh `datasets/earbud_parts` vÃ  cáº­p nháº­t file [data.yaml](file:///E:/Professional%20documents/Internship/RBCNN_Demo/datasets/earbud_parts/data.yaml). Validator kiá»ƒm tra Ä‘áº¡t `Trainable: YES` |
-| **Checkpoint `earbud_detector`** | **ÄÃƒ Sáº´N SÃ€NG** | Checkpoint `artifacts/training/earbud_detector/weights/best.pt` Ä‘Ã£ cÃ³ sáºµn tá»« láº§n train baseline cá»§a báº¡n, sáºµn sÃ ng cháº¡y camera |
-| **Script train máº·c Ä‘á»‹nh tÃªn cÅ©** | **ÄÃƒ Sá»¬A** | [train_detector.py](file:///E:/Professional%20documents/Internship/RBCNN_Demo/scripts/train_detector.py) giá» tá»± Ä‘á»™ng suy luáº­n: náº¿u `--data` lÃ  earbud thÃ¬ tá»± Ä‘á»™ng lÆ°u vÃ o `earbud_detector` |
-| **PhÃ­m camera hardcode láº¯p bÃºt** | **ÄÃƒ Sá»¬A** | [camera_app.py](file:///E:/Professional%20documents/Internship/RBCNN_Demo/src/assembly/camera_app.py) Ä‘Ã£ chuyá»ƒn sang phÃ­m Ä‘á»™ng: vá»›i tai nghe, phÃ­m `1` lÃ  `pick_case`, phÃ­m `2` lÃ  `insert_earbud`, phÃ­m `3` lÃ  `close_case` |
-| **Script quay video máº·c Ä‘á»‹nh bÃºt** | **ÄÃƒ Sá»¬A** | [record_assembly_videos.py](file:///E:/Professional%20documents/Internship/RBCNN_Demo/scripts/record_assembly_videos.py) Ä‘Ã£ há»— trá»£ `--project earbud` vÃ  cho phÃ©p Ä‘áº·t tÃªn ká»‹ch báº£n (`--scenario`) tá»± do |
-| **ChÆ°a kiá»ƒm tra containment hÃ¬nh há»c** | **ÄÃƒ Sá»¬A Ná»€N Táº¢NG** | Class `Detection` trong [vision.py](file:///E:/Professional%20documents/Internship/RBCNN_Demo/src/assembly/vision.py) Ä‘Ã£ cÃ³ sáºµn cÃ¡c phÆ°Æ¡ng thá»©c `is_inside`, `overlap_ratio_with`, `contains_point` |
-| **`close_case` chÆ°a cÃ³ detection class** | **Cáº¦N CHá»T GIáº¢I PHÃP** | Xem phÃ¢n tÃ­ch chi tiáº¿t táº¡i Má»¥c 3.3 bÃªn dÆ°á»›i |
-| **`Empty_Slot` cÃ³ `action: null`** | **Cáº¦N CHá»T GIáº¢I PHÃP** | Xem phÃ¢n tÃ­ch chi tiáº¿t táº¡i Má»¥c 3.4 bÃªn dÆ°á»›i |
-| **Cáº§n video temporal cho BiLSTM** | **Báº N Cáº¦N LÃ€M** | Xem hÆ°á»›ng dáº«n quay video táº¡i Má»¥c 6 |
+| FSM cấu hình được | Có | `src/assembly/fsm.py` và `configs/earbud_two_step_fsm_config.json` |
+| YOLO adapter | Có | Hỗ trợ closed-set YOLO và YOLO-World |
+| ViT–BiLSTM | Có | Runtime cache embedding, không encode lại 16 frame cũ |
+| Fusion hai tai nghe | Có | Kết hợp containment, số khe trống và action evidence |
+| Project profile | Có | `configs/projects/earbud.json` |
+| Runtime Hybrid | Có | `scripts/run_hybrid.py` |
+| Log JSONL | Có nhưng thiếu chi tiết | Hiện chủ yếu ghi kết quả FSM; chưa ghi đầy đủ detection/fusion/confidence |
+| Theo dõi ID qua frame | Chưa có | Chưa dùng ByteTrack hoặc tracker tương đương |
+| Phát hiện lấy tai nghe ra | Có | Khi khe trống xuất hiện trở lại ổn định, Fusion phát violation và FSM lùi về trạng thái 1 tai hoặc 0 tai |
+| Xác nhận nắp đã đóng bằng hình ảnh | Chưa có | Detector hiện chưa có `Case_Open/Case_Closed` |
+| Test camera end-to-end tự động | Chưa có | Mới có unit test cho từng khối logic |
 
-### 3.3. Xá»­ lÃ½ hÃ nh Ä‘á»™ng `close_case`
-Hiá»‡n táº¡i máº¡ng detector chá»‰ nháº­n diá»‡n 3 lá»›p: `Case`, `Earbud`, `Empty_Slot`. Khi náº¯p há»™p Ä‘Ã³ng láº¡i, váº­t thá»ƒ váº«n lÃ  `Case`. Do Ä‘Ã³ má»™t detector áº£nh tÄ©nh khÃ´ng thá»ƒ tá»± phÃ¢n biá»‡t Ä‘Æ°á»£c giá»¯a viá»‡c "há»™p Ä‘ang má»Ÿ" vÃ  "hÃ nh Ä‘á»™ng Ä‘Ã³ng náº¯p vá»«a xáº£y ra".
+Hành vi thực tế của Fusion hiện tại:
 
-CÃ¡c giáº£i phÃ¡p:
-1. **DÃ¹ng phÃ­m xÃ¡c nháº­n (Hiá»‡n táº¡i):** Sau khi láº¯p xong tai nghe, ngÆ°á»i dÃ¹ng nháº¥n phÃ­m `3` hoáº·c `SPACE` Ä‘á»ƒ xÃ¡c nháº­n Ä‘Ã³ng náº¯p hoÃ n táº¥t.
-2. **DÃ¹ng mÃ´ hÃ¬nh Temporal ViT + BiLSTM:** Quay video hÃ nh Ä‘á»™ng Ä‘Ã³ng náº¯p, máº¡ng BiLSTM sáº½ nháº­n diá»‡n cá»­ chá»‰ gáº­p náº¯p theo chuá»—i thá»i gian vÃ  tá»± Ä‘á»™ng phÃ¡t event `close_case`.
-3. **Má»Ÿ rá»™ng class Detector (KhuyÃªn dÃ¹ng khi gÃ¡n nhÃ£n láº¡i):** Thay vÃ¬ chá»‰ má»™t nhÃ£n `Case`, gÃ¡n thÃ nh:
-   - `Case_Open`: Há»™p sáº¡c Ä‘ang má»Ÿ náº¯p.
-   - `Case_Closed`: Há»™p sáº¡c Ä‘Ã£ Ä‘Ã³ng náº¯p.  
-   Khi `Case_Closed` xuáº¥t hiá»‡n trong WORK ZONE, detector cÃ³ thá»ƒ kÃ­ch hoáº¡t trá»±c tiáº¿p `close_case`!
+- `pick_case` được phát khi hộp xuất hiện ổn định; không cần action model xác nhận `pick_case`.
+- `insert_first_earbud` và `insert_second_earbud` cần đồng thời `insert_earbud` đủ confidence và occupancy tăng.
+- `remove_earbud_to_one`/`remove_earbud_to_zero` không cần thêm class action: YOLO suy ra thao tác tháo khi occupancy giảm và `Empty_Slot` xuất hiện trở lại ổn định.
+- Sau violation tháo tai, FSM lùi về state vật lý tương ứng; vì vậy đóng nắp ngay sau đó không thể PASS sai.
+- `close_case` cần action model dự đoán đóng nắp, nhưng chưa kiểm tra được trạng thái nắp bằng YOLO.
+- Đóng nắp sớm vẫn được chuyển tới FSM để FSM trả `VIOLATION`.
+- `stable_frames=3` là ba lần Fusion nhận kết quả YOLO ổn định, không nhất thiết là ba frame camera liên tiếp khi `--yolo-every > 1`.
 
-### 3.4. Táº­n dá»¥ng lá»›p `Empty_Slot`
-Lá»›p `Empty_Slot` hiá»‡n cÃ³ `"action": null` (chá»‰ hiá»ƒn thá»‹ box xanh dÆ°Æ¡ng). Äá»ƒ Ä‘Æ°a vÃ o logic kiá»ƒm tra:
-- **NguyÃªn lÃ½:** Khi há»™p sáº¡c má»Ÿ ra, ban Ä‘áº§u sáº½ cÃ³ 2 khe trá»‘ng (`Empty_Slot = 2`). Khi cáº¯m tai nghe vÃ o, khe trá»‘ng bá»‹ che khuáº¥t vÃ  biáº¿n máº¥t.
-- Báº±ng phÆ°Æ¡ng thá»©c `is_inside(case)` vá»«a bá»• sung, há»‡ thá»‘ng cÃ³ thá»ƒ Ä‘áº¿m sá»‘ `Empty_Slot` náº±m trong `Case`. Khi sá»‘ khe trá»‘ng giáº£m tá»« 2 vá» 0, há»‡ thá»‘ng tá»± Ä‘á»™ng xÃ¡c nháº­n hoÃ n thÃ nh bÆ°á»›c láº¯p tai nghe.
+### 3.2. Detection dataset hiện tại
 
----
+Dataset local: `datasets/earbud_merged`.
 
-## 4. Quyáº¿t Ä‘á»‹nh thiáº¿t káº¿ báº¡n cáº§n chá»‘t
+| Split | Ảnh | Label rỗng | Bounding box |
+|---|---:|---:|---:|
+| Train | 464 | 46 | 1.742 |
+| Validation | 58 | 6 | 198 |
+| Test | 59 | 5 | 231 |
+| **Tổng** | **581** | **57** | **2.171** |
 
-TrÆ°á»›c khi cáº¥u trÃºc láº¡i FSM vÃ  gÃ¡n nhÃ£n chi tiáº¿t, báº¡n cáº§n tráº£ lá»i cÃ¢u há»i cá»‘t lÃµi sau:
+| ID | Class | Số box |
+|---:|---|---:|
+| 0 | `Earphone_Case` | 526 |
+| 1 | `Earbud` | 144 |
+| 2 | `Empty_Slot` | 336 |
+| 3 | `Left_Earbud` | 358 |
+| 4 | `Right_Earbud` | 350 |
+| 5 | `Hand` | 457 |
 
-> [!IMPORTANT]
-> **Quy trÃ¬nh cá»§a báº¡n cáº§n láº¯p Má»˜T tai nghe hay pháº£i kiá»ƒm tra Ä‘á»§ Cáº¢ HAI tai nghe (tai trÃ¡i vÃ  tai pháº£i)?**
+Kiểm tra cấu trúc hiện tại:
 
-### Lá»±a chá»n A: Quy trÃ¬nh láº¯p 1 tai nghe (Hiá»‡n táº¡i)
-- **Chu trÃ¬nh:** `pick_case` -> `insert_earbud` -> `close_case` -> HoÃ n táº¥t.
-- **Æ¯u Ä‘iá»ƒm:** ÄÆ¡n giáº£n, FSM hiá»‡n táº¡i trong [earbud_fsm_config.json](file:///E:/Professional%20documents/Internship/RBCNN_Demo/configs/earbud_fsm_config.json) giá»¯ nguyÃªn vÃ  cháº¡y ngay láº­p tá»©c.
-- **PhÃ¹ há»£p:** LÃ m demo ban Ä‘áº§u, kiá»ƒm thá»­ nhanh kháº£ nÄƒng nháº­n diá»‡n.
+- Thiếu label: 0.
+- Dòng label sai định dạng: 0.
+- Label rỗng/background: 57.
+- Cấu trúc đủ để train, nhưng chưa chứng minh split độc lập theo video/session.
 
-### Lá»±a chá»n B: Quy trÃ¬nh kiá»ƒm tra Ä‘á»§ cáº£ 2 tai nghe (Chuáº©n cÃ´ng nghiá»‡p)
-- **Chu trÃ¬nh:** `pick_case` -> `insert_earbud_1` -> `insert_earbud_2` -> `close_case` -> HoÃ n táº¥t.
-- **YÃªu cáº§u:** 
-  - FSM cáº§n thÃªm má»™t tráº¡ng thÃ¡i trung gian (`S2_FIRST_EARBUD_INSERTED` vÃ  `S3_SECOND_EARBUD_INSERTED`).
-  - Hoáº·c FSM giá»¯ nguyÃªn action `insert_earbud` nhÆ°ng yÃªu cáº§u xuáº¥t hiá»‡n 2 láº§n liÃªn tiáº¿p trÆ°á»›c khi cho phÃ©p `close_case`.
-  - Náº¿u phÃ¢n biá»‡t khe TrÃ¡i / khe Pháº£i: Cáº§n Ä‘áº·t nhÃ£n `Left_Slot`, `Right_Slot` hoáº·c `Earbud_L`, `Earbud_R`.
+Checkpoint YOLO hiện có 60 epoch. Kết quả validation tốt nhất trong `results.csv` ở epoch 48:
 
-*Báº¡n hÃ£y chá»n PhÆ°Æ¡ng Ã¡n A hay B Ä‘á»ƒ mÃ¬nh tinh chá»‰nh cáº¥u hÃ¬nh FSM tÆ°Æ¡ng á»©ng.*
+| Precision | Recall | mAP50 | mAP50–95 |
+|---:|---:|---:|---:|
+| 0,578 | 0,565 | 0,582 | 0,493 |
 
----
+Kết luận: detector hiện là baseline, chưa đủ ổn định cho một hệ thống kiểm lỗi. Cần xem metric theo từng class và đặc biệt ưu tiên recall của hộp, tai nghe, khe trống và trạng thái nắp.
 
-## 5. HÆ°á»›ng dáº«n cháº¡y thá»­ nghiá»‡m Há»‡ thá»‘ng Tai nghe ngay hÃ´m nay
+### 3.3. Action dataset hiện tại
 
-Báº¡n cÃ³ thá»ƒ cháº¡y thá»­ há»‡ thá»‘ng thá»i gian thá»±c vá»›i checkpoint baseline hiá»‡n táº¡i:
+- Có 35 video gốc: 18 video ở `per1/session 01`, 17 video ở `per1/session 02`.
+- Chỉ 17 video của `per1/session 02` đã có annotation và feature.
+- `annotations.csv` có 66 segment.
+- Train: 11 video, 42 segment.
+- Validation: 2 video, 8 segment.
+- Test: 4 video, 16 segment.
+- Tất cả train/validation/test đều thuộc cùng một người và cùng session `per1/02`.
+
+Nhãn hiện tại:
+
+```text
+idle
+pick_case
+insert_earbud
+close_case
+```
+
+Checkpoint action model đạt validation Macro-F1 = 1,0 từ epoch 2; file evaluation hiện cũng chỉ báo cáo trên split `val` với 66 temporal window. Kết quả này **không được xem là kết quả tổng quát hóa**, vì:
+
+- train/val/test cùng người, cùng ngày/session và cùng bối cảnh;
+- validation chỉ gồm hai video;
+- các temporal window từ cùng một video có độ tương quan rất cao;
+- model có thể học nền, góc camera, tay hoặc nhịp thao tác thay vì học hành động.
+
+`CachedActionWindowDataset` mặc định đã chặn person/session xuất hiện ở nhiều split. Model cũ chỉ có thể train trên split hiện tại nếu dùng `--allow-same-session`; không dùng tùy chọn này cho kết quả cuối.
+
+### 3.4. Test và môi trường
+
+- Repository hiện có 45 test method.
+- Trong môi trường kiểm tra ngày 21/09/2026, 30 test nhẹ đã đạt.
+- Chưa chạy lại được toàn bộ suite vì Python hiện tại thiếu `numpy`, `torch`, `PyYAML` và OpenCV.
+- Các config và checkpoint mà profile earbud tham chiếu đều đang tồn tại.
+
+Không ghi “45/45 đạt” cho đến khi chạy toàn bộ suite trong đúng virtual environment.
+
+## 4. Những blocker phải xử lý trước khi train lại
+
+### P0 — Split action bị rò rỉ theo person/session
+
+Không tiếp tục dùng metric 1,0 làm kết quả báo cáo. Cần thu ít nhất ba group độc lập và chia **trước khi train**:
+
+```text
+train: person/session A, B, ...
+val:   person/session chưa có trong train
+test:  person/session chưa có trong train và val
+```
+
+Không random frame hoặc random segment vào các split khác nhau. Toàn bộ video của cùng một `person_id + session_id` phải nằm trong đúng một split.
+
+### P0 — Chưa biết detection split có rò rỉ hay không
+
+Nếu các frame gần nhau của cùng video xuất hiện ở cả train và test thì metric sẽ cao giả. Cần lưu `source_video`, `person_id`, `session_id`, `frame_index` trong manifest và chia theo source group trước khi augmentation.
+
+### P0 — Chưa xác nhận vật lý cho bước đóng nắp
+
+Thêm `Case_Open` và `Case_Closed`, hoặc một classifier trạng thái nắp riêng. Chỉ phát PASS cho `close_case` khi có cả:
+
+```text
+action = close_case
+AND đủ hai tai nghe đã xác nhận
+AND trạng thái ổn định chuyển Case_Open → Case_Closed
+```
+
+Đóng nắp sớm vẫn phải được phát thành event để FSM báo lỗi, nhưng cần log rằng lỗi được xác định từ action hay từ trạng thái nắp.
+
+### P0 — Removal/rework đã có baseline
+
+Hệ thống đã phát `remove_earbud_to_one` hoặc `remove_earbud_to_zero` khi khe trống xuất hiện trở lại ổn định. Kết quả là `VIOLATION` và FSM rollback về bước vật lý tương ứng.
+
+Phần còn cần nâng cấp khi dataset có class `Hand` tin cậy: chỉ chốt removal sau khi tay rời vùng hộp. Baseline hiện tại dùng bằng chứng dương tính từ khe trống và `stable_frames`/`dwell_frames`, không coi việc mất bbox tai trong một frame là removal.
+
+### P1 — Log chưa đủ để debug
+
+Mỗi quyết định cần ghi thêm:
+
+- `frame_index`, timestamp và thời gian monotonic;
+- action label/confidence;
+- danh sách detection label/confidence/box;
+- số tai nghe trong hộp, số khe trống, occupancy;
+- fusion event và reason;
+- FSM state trước/sau;
+- thời gian YOLO, ViT và tổng latency;
+- đường dẫn ảnh/video bằng chứng khi có VIOLATION.
+
+## 5. Quy trình làm lại dự án
+
+### Giai đoạn 0 — Đóng băng baseline
+
+Mục tiêu: giữ kết quả cũ để so sánh, không ghi đè artifact.
+
+**Trạng thái 21/09/2026: ĐÃ HOÀN THÀNH.** Baseline nằm tại `artifacts/baselines/earbud_v1`; manifest, thông tin máy và checksum nằm tại `reports/earbud_v1`. Bộ config mới `configs/projects/earbud_v2.json` đã trỏ sang checkpoint/log v2 riêng.
+
+Đã thực hiện:
+
+1. [x] Ghi commit/hash code, ngày, cấu hình và máy chạy.
+2. [x] Sao lưu `artifacts/action_model`, `artifacts/training/earbud_merged_detector` và `annotations.csv` dưới tên có version.
+3. [x] Tạo config `earbud_v2` trỏ sang đường dẫn checkpoint/log mới thay vì ghi đè `best.pt` cũ.
+4. [x] Lưu seed và thông tin môi trường hiện có; đánh dấu rõ các phiên bản của môi trường train cũ không thể truy xuất.
+
+Đầu ra:
+
+```text
+artifacts/baselines/earbud_v1/
+reports/earbud_v1/README.md
+reports/earbud_v1/baseline_manifest.json
+reports/earbud_v1/checksums.sha256
+configs/projects/earbud_v2.json
+```
+
+Hoàn thành khi có thể xác định chính xác checkpoint nào được tạo bởi dataset/config nào.
+
+### Giai đoạn 1 — Chốt SOP và schema nhãn
+
+Viết một SOP ngắn, quan sát được bằng camera:
+
+| Bước | Trạng thái trước | Hành động | Bằng chứng hoàn tất | Lỗi cần bắt |
+|---|---|---|---|---|
+| 1 | Chưa có hộp | Đặt hộp mở | `Case_Open` ổn định trong work zone | Hộp đóng, hộp ngoài zone |
+| 2 | Hai khe trống | Lắp tai 1 | Occupancy 0→1 và action insert | Đặt gần khe, đặt ngoài hộp |
+| 3 | Một khe trống | Lắp tai 2 | Occupancy 1→2 và action insert | Lắp sai/không vào khe |
+| 4 | Đủ hai tai | Đóng nắp | `Case_Open→Case_Closed` và action close | Đóng sớm |
+| Rework | Đã có tai | Lấy tai ra | Occupancy giảm ổn định | Removal không cho phép |
+
+Quyết định trước khi gán nhãn:
+
+- Có cần phân biệt tai trái/phải không?
+- Có cho phép lắp tai phải trước tai trái không?
+- Có cho phép tháo ra và lắp lại không?
+- Một clip chứa cả chu trình hay một action?
+- `idle` bao gồm những khoảng nào; khoảng chuyển tiếp khó xác định có dùng `uncertain` không?
+
+Khuyến nghị class detection v2:
+
+```text
+Case_Open
+Case_Closed
+Left_Earbud
+Right_Earbud
+Empty_Slot_Left
+Empty_Slot_Right
+Hand
+```
+
+Không dùng đồng thời box `Earbud` generic và box trái/phải cho cùng một vật thể trong dataset v2.
+
+### Giai đoạn 2 — Chuẩn hóa môi trường
+
+Windows PowerShell:
 
 ```powershell
 cd "E:\Professional documents\Internship\RBCNN_Demo"
-
-# Khá»Ÿi cháº¡y camera thá»i gian thá»±c vá»›i cáº¥u hÃ¬nh tai nghe:
-python scripts/run_camera.py `
-  --source 0 `
-  --camera-config configs/camera_earbud_config.json `
-  --fsm-config configs/earbud_fsm_config.json
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements-camera.txt
+python -m pip install -r requirements-ml.txt
+python -m pip install -e .
+python -m unittest discover -s tests -v
 ```
 
-### CÃ¡c phÃ­m Ä‘iá»u khiá»ƒn trong cá»­a sá»• camera:
-- `PhÃ­m 1`: MÃ´ phá»ng hÃ nh Ä‘á»™ng **`pick_case`** (Äáº·t há»™p sáº¡c).
-- `PhÃ­m 2`: MÃ´ phá»ng hÃ nh Ä‘á»™ng **`insert_earbud`** (Láº¯p tai nghe).
-- `PhÃ­m 3`: MÃ´ phá»ng hÃ nh Ä‘á»™ng **`close_case`** (ÄÃ³ng náº¯p há»™p).
-- `PhÃ­m SPACE`: XÃ¡c nháº­n gá»£i Ã½ tá»± Ä‘á»™ng khi detector phÃ¡t hiá»‡n váº­t thá»ƒ náº±m á»•n Ä‘á»‹nh trong vÃ¹ng WORK ZONE.
-- `PhÃ­m C`: Chuyá»ƒn Ä‘á»•i giá»¯a cÃ¡c camera káº¿t ná»‘i (webcam laptop / camera USB ngoÃ i).
-- `PhÃ­m R`: Reset chu trÃ¬nh vá» tráº¡ng thÃ¡i ban Ä‘áº§u `S0_IDLE`.
-- `PhÃ­m S`: LÆ°u áº£nh chá»¥p mÃ n hÃ¬nh vÃ o `artifacts/screenshots/`.
-- `PhÃ­m Q` hoáº·c `Esc`: ThoÃ¡t chÆ°Æ¡ng trÃ¬nh.
+Nếu dùng NVIDIA GPU, cài đúng PyTorch/CUDA theo máy trước rồi kiểm tra:
 
-### Cháº¡y kiá»ƒm thá»­ tá»± Ä‘á»™ng toÃ n bá»™ test case:
 ```powershell
-python -m unittest discover tests
+python -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
 ```
-*(Káº¿t quáº£ hiá»‡n táº¡i: ToÃ n bá»™ 41 unit test Ä‘á»u cháº¡y thÃ nh cÃ´ng).*
 
----
+Gate hoàn thành:
 
-## 6. HÆ°á»›ng dáº«n quay video hÃ nh Ä‘á»™ng cho Tai nghe (ViT + BiLSTM)
+- Import được `cv2`, `torch`, `transformers`, `ultralytics`, `yaml`.
+- Toàn bộ unit test đạt.
+- Camera mở được và ghi thử một video không bị tua nhanh.
 
-Náº¿u báº¡n muá»‘n há»‡ thá»‘ng tá»± Ä‘á»™ng nháº­n diá»‡n hÃ nh Ä‘á»™ng láº¯p rÃ¡p (nhÆ° cáº¯m tai nghe, gáº­p náº¯p há»™p) mÃ  khÃ´ng cáº§n nháº¥n phÃ­m:
+### Giai đoạn 3 — Thu dữ liệu có thiết kế
 
-### 6.1. Lá»‡nh quay má»™t session tai nghe
+#### 3.1. Ma trận dữ liệu tối thiểu đề xuất
+
+- Ít nhất 3 người; nếu chỉ có một người thì dùng ít nhất 3 ngày/session với thay đổi có kiểm soát.
+- Mỗi group quay 15–20 chu trình đúng.
+- Mỗi lỗi quan trọng có ít nhất 10–15 clip, phân bố qua nhiều group.
+- Có thay đổi ánh sáng, tay áo/găng, vị trí hộp và góc xoay; không thay đổi tất cả yếu tố cùng lúc.
+
+Các scenario bắt buộc:
+
+| Scenario | Kết quả mong đợi |
+|---|---|
+| `correct` | Hoàn tất đủ bốn bước |
+| `close_empty` | Báo đóng khi chưa có tai |
+| `close_one_earbud` | Báo đóng khi mới có một tai |
+| `near_slot_not_inserted` | Không PASS insertion |
+| `outside_case` | Không PASS insertion |
+| `remove_after_insert` | Báo removal hoặc vào rework |
+| `hand_occlusion` | Không tạo event giả khi che tạm thời |
+| `case_removed` | Reset/abort chu trình theo SOP |
+| `wrong_order` | Báo lỗi nếu SOP cấm thứ tự đó |
+
+Quay action video:
+
 ```powershell
-# Quay ká»‹ch báº£n láº¯p Ä‘Ãºng (correct):
 python scripts/record_assembly_videos.py `
-  --source 0 `
-  --person person01 `
-  --session session01 `
   --project earbud `
-  --scenario correct
+  --person person02 `
+  --session session01 `
+  --scenario correct `
+  --source 0
 ```
 
-Video sáº½ tá»± Ä‘á»™ng Ä‘Æ°á»£c lÆ°u vÃ o: `data/earbud_actions/raw_videos/person01/session01/`.
+Mỗi clip phải được xem lại ngay: đúng FPS, không mất đầu/cuối thao tác, nhìn rõ hộp và hai khe.
 
-### 6.2. Quay cÃ¡c ká»‹ch báº£n lá»—i Ä‘á»ƒ kiá»ƒm thá»­ cáº£nh bÃ¡o FSM:
+#### 3.2. Chia split trước khi trích frame/feature
+
+Tạo bảng group cố định, ví dụ:
+
+| Group | Split |
+|---|---|
+| person01/session01 | train |
+| person02/session01 | train |
+| person03/session01 | validation |
+| person04/session01 | test |
+
+Nếu chưa có bốn người, dùng session/ngày độc lập nhưng phải ghi rõ hạn chế. Không dùng `--allow-same-session` cho model báo cáo cuối.
+
+Script `split_annotations.py` hiện chia theo video, chưa đảm bảo group split. Với dataset v2, gán split theo manifest person/session hoặc nâng cấp script trước khi dùng.
+
+### Giai đoạn 4 — Làm lại detection dataset
+
+Quy trình:
+
+1. Chốt class list và guideline bbox bằng hình minh họa.
+2. Chia source video/session thành train/val/test.
+3. Sau đó mới lấy frame từ từng split.
+4. Loại frame gần như trùng nhau; không lấy hàng chục frame liên tiếp của cùng cảnh.
+5. Gán nhãn, review chéo và sửa toàn bộ missing/wrong class/bbox quá rộng.
+6. Xác nhận 57 label rỗng cũ; ảnh nào có vật thể mục tiêu thì không được để rỗng.
+7. Tạo `data.yaml` portable, không chứa đường dẫn tuyệt đối của một máy.
+
+Kiểm tra:
+
 ```powershell
-# Ká»‹ch báº£n quÃªn láº¯p tai nghe mÃ  Ä‘Ã£ Ä‘Ã³ng há»™p:
-python scripts/record_assembly_videos.py --source 0 --person person01 --session session02 --project earbud --scenario missing_earbud
-
-# Ká»‹ch báº£n Ä‘Ã³ng náº¯p quÃ¡ sá»›m:
-python scripts/record_assembly_videos.py --source 0 --person person01 --session session03 --project earbud --scenario close_case_early
-
-# Ká»‹ch báº£n lÃ m sai thá»© tá»± (cáº§m tai nghe trÆ°á»›c khi Ä‘áº·t há»™p):
-python scripts/record_assembly_videos.py --source 0 --person person01 --session session04 --project earbud --scenario wrong_order
+python scripts/validate_detection_dataset.py `
+  --data datasets/earbud_v2/data.yaml
 ```
 
----
+Train baseline:
 
-## 7. Checklist viá»‡c báº¡n nÃªn Æ°u tiÃªn lÃ m ngay
+```powershell
+python scripts/train_detector.py `
+  --data datasets/earbud_v2/data.yaml `
+  --model yolo26n.pt `
+  --epochs 100 `
+  --image-size 640 `
+  --batch 8 `
+  --device 0 `
+  --name earbud_v2_detector
+```
 
-Äá»ƒ hoÃ n thiá»‡n há»‡ thá»‘ng, báº¡n hÃ£y thá»±c hiá»‡n theo thá»© tá»± sau:
+Phải báo cáo:
 
-- [ ] **Viá»‡c 1: Chá»‘t thiáº¿t káº¿ FSM:** BÃ¡o cho mÃ¬nh biáº¿t báº¡n muá»‘n quy trÃ¬nh kiá»ƒm tra 1 tai nghe hay Ä‘á»§ cáº£ 2 tai nghe (trÃ¡i/pháº£i).
-- [ ] **Viá»‡c 2: Sá»­a 56 label rá»—ng & xÃ³a 3 box lá»—i:** Má»Ÿ táº­p dá»¯ liá»‡u `datasets/earbud_parts` trÃªn cÃ´ng cá»¥ gÃ¡n nhÃ£n, kiá»ƒm tra 56 file label rá»—ng vÃ  gÃ¡n box cho cÃ¡c áº£nh tháº¥y rÃµ há»™p sáº¡c / tai nghe / khe trá»‘ng; xÃ³a 3 box 1-6 pixel.
-- [ ] **Viá»‡c 3: Khá»­ rÃ² rá»‰ dá»¯ liá»‡u:** Chuyá»ƒn toÃ n bá»™ 151 áº£nh hiá»‡n táº¡i vÃ o táº­p `train`.
-- [ ] **Viá»‡c 4: Quay session má»›i cho Val vÃ  Test:** Quay 1 session Ä‘á»™c láº­p cho `val` (khoáº£ng 50 áº£nh) vÃ  1 session Ä‘á»™c láº­p cho `test` (khoáº£ng 50 áº£nh) tá»« gÃ³c quay / ngÆ°á»i thao tÃ¡c khÃ¡c.
-- [ ] **Viá»‡c 5: Kiá»ƒm tra vÃ  train láº¡i:** Cháº¡y `python scripts/validate_detection_dataset.py --data datasets/earbud_parts/data.yaml`, sau Ä‘Ã³ cháº¡y `python scripts/train_detector.py --data datasets/earbud_parts/data.yaml --epochs 60` Ä‘á»ƒ cÃ³ checkpoint sáº¡ch má»›i.
+- Precision, recall, AP50 và AP50–95 từng class.
+- Confusion matrix.
+- Ảnh false positive/false negative.
+- Kết quả riêng cho che khuất, ánh sáng yếu, hộp xoay và vật thể nhỏ.
 
+Không chọn model chỉ theo mAP trung bình. Với class dùng làm điều kiện bắt buộc, recall thấp sẽ làm hệ thống bỏ sót bước.
+
+### Giai đoạn 5 — Làm lại action dataset và BiLSTM
+
+Gán nhãn video:
+
+```powershell
+python scripts/annotate_actions.py `
+  --videos-dir data/earbud_actions_v2/raw_videos `
+  --output data/earbud_actions_v2/annotations.csv
+```
+
+Quy tắc annotation:
+
+- Ranh giới action dựa trên chuyển động quan sát được, không dựa trên kết quả YOLO.
+- Không để hai segment khác nhãn chồng thời gian nếu code chưa hỗ trợ multi-label.
+- Khoảng mơ hồ phải được xử lý nhất quán: loại khỏi annotation, hoặc thêm nhãn `uncertain` vào config; không tự ghi `uncertain` khi config vẫn chỉ có bốn nhãn hiện tại.
+- Review ít nhất 10% clip bởi người thứ hai.
+- Kiểm tra mọi `video_id`, `person_id`, `session_id`, `scenario` và `split`.
+
+Trích feature:
+
+```powershell
+python scripts/extract_spatial_features.py `
+  --videos-dir data/earbud_actions_v2/raw_videos `
+  --output-dir data/earbud_actions_v2/features `
+  --config configs/action_earbud_config.json
+```
+
+Kiểm tra pipeline:
+
+```powershell
+python scripts/verify_pipeline.py `
+  --annotations data/earbud_actions_v2/annotations.csv `
+  --features-dir data/earbud_actions_v2/features `
+  --config configs/action_earbud_config.json
+```
+
+Ngoài validator hiện có, phải xác nhận không có `(person_id, session_id)` ở nhiều split.
+
+Train:
+
+```powershell
+python scripts/train_action_model.py `
+  --annotations data/earbud_actions_v2/annotations.csv `
+  --features-dir data/earbud_actions_v2/features `
+  --config configs/action_earbud_config.json `
+  --output artifacts/action_model_v2 `
+  --device cuda
+```
+
+Đánh giá cả validation và test:
+
+```powershell
+python scripts/evaluate_action_model.py `
+  --checkpoint artifacts/action_model_v2/best.pt `
+  --annotations data/earbud_actions_v2/annotations.csv `
+  --features-dir data/earbud_actions_v2/features `
+  --config configs/action_earbud_config.json `
+  --split test `
+  --output artifacts/action_model_v2/evaluation_test.json
+```
+
+Không điều chỉnh threshold hoặc kiến trúc dựa trên test. Test chỉ chạy sau khi đã khóa lựa chọn bằng validation.
+
+### Giai đoạn 6 — Nâng cấp Fusion và FSM
+
+Thứ tự triển khai:
+
+1. Dùng `Case_Open/Case_Closed` cho bước đặt hộp và đóng nắp.
+2. Giữ occupancy ổn định theo thời gian; phân biệt mất detection với removal thật.
+3. Kiểm thử và tinh chỉnh baseline `remove_earbud_to_one`/`remove_earbud_to_zero`; bổ sung điều kiện `Hand` rời khỏi hộp nếu dataset v2 giữ class tay.
+4. Thêm tracker ID nếu detection trái/phải vẫn nhảy nhãn qua frame.
+5. Log toàn bộ evidence thay vì chỉ log outcome FSM.
+6. Viết replay runner để chạy lại video cố định mà không cần camera trực tiếp.
+7. Tạo `configs/projects/earbud_v2.json` trỏ tới config và checkpoint v2; giữ profile `earbud.json` để tái hiện baseline cũ.
+
+Các unit/integration test bắt buộc:
+
+- Geometry đứng yên không được tự tạo insertion.
+- Đưa tai nghe gần khe nhưng ngoài hộp không được PASS.
+- Action insert nhưng occupancy không tăng không được PASS.
+- Occupancy tăng nhưng không có action evidence không được PASS.
+- Đóng nắp khi 0/1 tai phải là VIOLATION.
+- Đóng nắp khi đủ hai tai nhưng chưa thấy `Case_Closed` chưa được PASS.
+- Che khuất ngắn không rollback.
+- Removal ổn định phải báo lỗi hoặc vào rework.
+- Reset phải xóa buffer, latch và cycle state.
+
+### Giai đoạn 7 — Đánh giá end-to-end
+
+Tạo manifest video test độc lập với ground truth event. Với mỗi clip, lưu:
+
+```text
+video_id
+scenario
+ground-truth event sequence
+predicted event sequence
+false PASS
+missed violation
+false violation
+delay của từng event
+```
+
+Metric cần báo cáo:
+
+- Completion accuracy toàn chu trình.
+- Precision/recall/F1 cho từng event.
+- Violation recall theo từng scenario lỗi.
+- False PASS rate.
+- False alarm trên mỗi chu trình hoặc mỗi giờ.
+- Độ trễ trung vị và P95 của event.
+- FPS và thời gian YOLO/ViT–LSTM trên đúng máy demo.
+
+Mục tiêu nghiệm thu đề xuất cho prototype v2:
+
+| Chỉ số | Mục tiêu |
+|---|---:|
+| Completion accuracy trên test độc lập | ≥ 90% |
+| Recall lỗi đóng nắp sớm | ≥ 95% |
+| Recall các violation quan trọng | ≥ 90% |
+| False PASS | ≤ 5% chu trình |
+| False violation | ≤ 0,1/chu trình |
+| Event delay P95 | ≤ 1,5 giây |
+
+Các ngưỡng này chỉ có ý nghĩa khi test độc lập theo person/session và có đủ số clip lỗi.
+
+### Giai đoạn 8 — Chạy demo và viết báo cáo
+
+Chạy camera GPU:
+
+```powershell
+python scripts/run_hybrid.py `
+  --project configs/projects/earbud_v2.json `
+  --source 0 `
+  --device 0 `
+  --sample-fps 10 `
+  --yolo-every 1
+```
+
+Chạy CPU để kiểm tra chức năng:
+
+```powershell
+python scripts/run_hybrid.py `
+  --project configs/projects/earbud_v2.json `
+  --source 0 `
+  --device cpu `
+  --sample-fps 3 `
+  --yolo-every 4
+```
+
+Giảm `sample-fps` làm thay đổi độ dài thời gian thực của cửa sổ 16 embedding: 1,6 giây ở 10 FPS nhưng khoảng 5,3 giây ở 3 FPS. Nếu deploy CPU ở FPS thấp, nên train/evaluate lại với sampling tương ứng.
+
+Nếu Hugging Face cache chưa có backbone, chạy một lần khi có mạng:
+
+```powershell
+python scripts/run_hybrid.py --project configs/projects/earbud_v2.json --source 0 --allow-download
+```
+
+Sau khi cache xong, bỏ `--allow-download`; inference camera chạy local.
+
+## 6. Thứ tự công việc thực tế
+
+Không bắt đầu bằng việc train lại ngay. Thứ tự nên là:
+
+1. Chốt SOP và class/action schema.
+2. Dựng môi trường sạch, chạy đủ test.
+3. Sửa group split và manifest dữ liệu.
+4. Quay thêm người/session và scenario lỗi.
+5. Làm sạch detection dataset, train và phân tích lỗi.
+6. Gán action, trích feature, train và test độc lập.
+7. Bổ sung trạng thái nắp, removal/rework và logging.
+8. Chạy replay end-to-end trước khi chạy camera live.
+9. Khóa threshold bằng validation.
+10. Chạy test đúng một lần để lập báo cáo cuối.
+
+## 7. Checklist bàn giao
+
+### Dữ liệu
+
+- [ ] Có manifest nguồn và quy tắc đặt tên.
+- [ ] Không có person/session hoặc source video ở nhiều split.
+- [ ] Label rỗng đã được kiểm tra thủ công.
+- [ ] Có đủ correct và violation scenario.
+- [ ] Có data card ghi nguồn, giấy phép, cách split và giới hạn.
+
+### Model
+
+- [ ] Báo cáo YOLO theo từng class trên test độc lập.
+- [ ] Báo cáo action confusion matrix và macro-F1 trên test độc lập.
+- [ ] Checkpoint đi kèm config, class order và phiên bản thư viện.
+- [ ] Không dùng kết quả `--allow-same-session` làm metric cuối.
+
+### Logic hệ thống
+
+- [ ] Insertion cần action và thay đổi occupancy.
+- [ ] Close cần action và `Case_Open→Case_Closed`.
+- [ ] Removal/rework đã có quy tắc rõ ràng.
+- [ ] Che khuất ngắn không tạo event giả.
+- [ ] Event log có đủ evidence để điều tra lỗi.
+
+### Kiểm thử và demo
+
+- [ ] Toàn bộ unit test đạt trong environment đã khóa version.
+- [ ] Replay test đạt trước camera live.
+- [ ] Có ít nhất 10 chu trình đúng liên tiếp không false alarm.
+- [ ] Mỗi scenario lỗi quan trọng được demo ít nhất 5 lần.
+- [ ] Báo cáo FPS, latency, phần cứng và giới hạn sử dụng.
+
+## 8. Việc nên làm ngay trong vòng tiếp theo
+
+1. Không dùng Macro-F1 = 1,0 hiện tại làm kết luận.
+2. Chọn thêm ít nhất hai person/session độc lập và lập bảng split trước khi quay.
+3. Quyết định schema detection v2 có `Case_Open/Case_Closed` và khe trái/phải.
+4. Kiểm tra thủ công 57 ảnh label rỗng và nguồn của từng split detection.
+5. Chạy toàn bộ test trong `.venv`; lưu kết quả và phiên bản môi trường.
+6. Quay pilot nhỏ: mỗi group 3 correct + 1 clip cho từng lỗi chính.
+7. Review pilot trước khi quay hàng loạt.
+8. Chỉ train v2 sau khi manifest, split và guideline đã được khóa.

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "name": "earbud_v2",
+  "display_name": "Earbud Assembly Monitor v2",
+  "camera_config": "configs/camera_earbud_v2_config.json",
+  "fsm_config": "configs/earbud_v2_fsm_config.json",
+  "action_config": "configs/action_earbud_v2_config.json",
+  "action_model": "artifacts/action_model_v2/best.pt",
+  "event_log": "artifacts/events/earbud_v2.jsonl",
+  "fusion": {
+    "factory": "assembly.earbud_fusion:EarbudFusionEngine",
+    "parameters": {
+      "required_earbuds": 2,
+      "stable_frames": 3,
+      "min_action_confidence": 0.6
+    }
+  }
+}

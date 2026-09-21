@@ -16,11 +16,11 @@ class ConfigTests(unittest.TestCase):
     def test_project_config_is_valid(self) -> None:
         config = load_config(DEFAULT_CONFIG)
         self.assertEqual(config.initial_state, "S0_IDLE")
-        self.assertEqual(len(config.workflow), 3)
+        self.assertEqual(len(config.workflow), 4)
 
     def test_rejects_unknown_transition_target(self) -> None:
         raw = json.loads(DEFAULT_CONFIG.read_text(encoding="utf-8"))
-        raw["states"]["S0_IDLE"]["allowed"]["pick_case"] = "DOES_NOT_EXIST"
+        raw["states"]["S0_IDLE"]["allowed"]["open_case"] = "DOES_NOT_EXIST"
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "bad.json"
             path.write_text(json.dumps(raw), encoding="utf-8")
@@ -30,5 +30,4 @@ class ConfigTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
 

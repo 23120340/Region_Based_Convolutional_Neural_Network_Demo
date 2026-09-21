@@ -1,49 +1,96 @@
 {
   "schema_version": 1,
-  "project": "earbud_assembly_v1",
+  "project": "earbud_two_stage_assembly",
   "initial_state": "S0_IDLE",
-  "completed_state": "S3_COMPLETED",
+  "completed_state": "S4_COMPLETED",
   "idle_actions": ["idle", "uncertain"],
   "actions": {
     "idle": "Đang chờ",
-    "pick_case": "Đặt hộp sạc",
-    "insert_earbud": "Lắp tai nghe vào hộp",
+    "open_case": "Mở hộp sạc và xác minh hai khe trống",
+    "insert_earbud_1": "Lắp tai nghe thứ nhất",
+    "insert_earbud_2": "Lắp tai nghe thứ hai",
+    "remove_earbud_to_one": "Tháo một tai nghe sau khi đã lắp đủ",
+    "remove_earbud_to_zero": "Tháo tai nghe đã lắp ra khỏi hộp",
     "close_case": "Đóng nắp hộp sạc"
   },
   "workflow": [
-    {"state": "S1_CASE_READY", "action": "pick_case", "label": "Đặt hộp sạc vào vùng lắp"},
-    {"state": "S2_EARBUD_INSERTED", "action": "insert_earbud", "label": "Lắp tai nghe vào khe trống"},
-    {"state": "S3_COMPLETED", "action": "close_case", "label": "Đóng nắp hộp sạc hoàn tất"}
+    {
+      "state": "S1_CASE_OPEN_EMPTY",
+      "action": "open_case",
+      "label": "Mở hộp, nhìn thấy empty_left và empty_right"
+    },
+    {
+      "state": "S2_FIRST_EARBUD_INSERTED",
+      "action": "insert_earbud_1",
+      "label": "Tai thứ nhất nằm trong hộp, còn đúng một khe trống"
+    },
+    {
+      "state": "S3_TWO_EARBUDS_INSERTED",
+      "action": "insert_earbud_2",
+      "label": "Đủ hai tai nằm trong hộp, không còn khe trống"
+    },
+    {
+      "state": "S4_COMPLETED",
+      "action": "close_case",
+      "label": "Đóng hộp sau khi đã lắp đủ hai tai"
+    }
   ],
   "states": {
     "S0_IDLE": {
-      "message": "Sẵn sàng: hãy đặt hộp sạc tai nghe vào vùng lắp.",
-      "allowed": {"pick_case": "S1_CASE_READY"},
+      "message": "Hãy đưa hộp mở vào WORK ZONE; hệ thống phải thấy đủ empty_left và empty_right.",
+      "allowed": {"open_case": "S1_CASE_OPEN_EMPTY"},
       "violations": {
-        "insert_earbud": "Chưa đặt hộp sạc vào vùng lắp mà đã thao tác tai nghe.",
-        "close_case": "Chưa có hộp sạc trên bàn thao tác."
+        "insert_earbud_1": "Lỗi thứ tự: chưa xác minh hộp mở và hai khe trống mà đã lắp tai thứ nhất.",
+        "insert_earbud_2": "Lỗi bỏ bước: chưa xác minh hộp mở và tai thứ nhất.",
+        "close_case": "Hộp đang đóng. Hãy mở hộp và cho camera thấy rõ hai khe trống trước khi lắp."
       }
     },
-    "S1_CASE_READY": {
-      "message": "Đã có hộp sạc: hãy lắp tai nghe vào khe trống.",
-      "allowed": {"insert_earbud": "S2_EARBUD_INSERTED"},
+    "S1_CASE_OPEN_EMPTY": {
+      "message": "Hộp đã mở và có 2 khe trống. Hãy lắp tai nghe thứ nhất vào trong hộp.",
+      "allowed": {"insert_earbud_1": "S2_FIRST_EARBUD_INSERTED"},
       "violations": {
-        "close_case": "Bỏ bước: chưa lắp tai nghe vào hộp sạc mà đã đóng nắp."
+        "open_case": "Hộp đã được xác minh mở; hãy lắp tai thứ nhất.",
+        "insert_earbud_2": "Lỗi bỏ bước: chưa xác minh tai thứ nhất và trạng thái còn 1 khe trống.",
+        "close_case": "Đóng hộp quá sớm: cả hai khe vẫn đang trống, chưa lắp tai nghe nào."
       }
     },
-    "S2_EARBUD_INSERTED": {
-      "message": "Đã lắp tai nghe vào hộp: hãy đóng nắp hộp sạc để hoàn tất.",
-      "allowed": {"close_case": "S3_COMPLETED"},
+    "S2_FIRST_EARBUD_INSERTED": {
+      "message": "Đã xác minh tai thứ nhất nằm trong hộp và còn 1 khe trống. Hãy lắp tai thứ hai.",
+      "allowed": {"insert_earbud_2": "S3_TWO_EARBUDS_INSERTED"},
       "violations": {
-        "pick_case": "Hộp sạc đã có trong vùng lắp ráp."
+        "open_case": "Hộp đã mở và tai thứ nhất đã được xác minh; hãy lắp tai thứ hai.",
+        "insert_earbud_1": "Tai thứ nhất đã được ghi nhận; không được tính lặp thành tai thứ hai.",
+        "remove_earbud_to_zero": {
+          "message": "VIOLATION: Tai nghe thứ nhất đã bị tháo ra; hệ thống thấy lại cả hai khe trống. Phải lắp lại tai thứ nhất.",
+          "target_state": "S1_CASE_OPEN_EMPTY"
+        },
+        "close_case": "Thiếu tai nghe: mới xác minh 1/2 tai, vẫn còn một khe trống nên chưa được đóng hộp."
       }
     },
-    "S3_COMPLETED": {
-      "message": "Hoàn tất: tai nghe đã lắp ráp và cất vào hộp đúng quy trình. Có thể bắt đầu lượt mới.",
-      "allowed": {"pick_case": "S1_CASE_READY"},
+    "S3_TWO_EARBUDS_INSERTED": {
+      "message": "Đã xác minh đủ 2 tai trong hộp và 0 khe trống. Hãy đóng nắp hộp.",
+      "allowed": {"close_case": "S4_COMPLETED"},
       "violations": {
-        "insert_earbud": "Chu trình đã hoàn tất; hãy lấy hộp sạc mới.",
-        "close_case": "Hộp sạc đã đóng hoàn tất."
+        "open_case": "Hộp đang mở và đã đủ hai tai; bước tiếp theo là đóng nắp.",
+        "insert_earbud_1": "Hộp đã đủ hai tai nghe; không được lắp thêm.",
+        "insert_earbud_2": "Tai thứ hai đã được ghi nhận; hãy đóng nắp hộp.",
+        "remove_earbud_to_one": {
+          "message": "VIOLATION: Một tai nghe đã bị tháo ra sau khi lắp đủ; hệ thống thấy lại một khe trống. Phải lắp lại tai thứ hai.",
+          "target_state": "S2_FIRST_EARBUD_INSERTED"
+        },
+        "remove_earbud_to_zero": {
+          "message": "VIOLATION: Cả hai tai nghe đã bị tháo ra sau khi lắp đủ. Phải bắt đầu lắp lại từ tai thứ nhất.",
+          "target_state": "S1_CASE_OPEN_EMPTY"
+        }
+      }
+    },
+    "S4_COMPLETED": {
+      "message": "SUCCESS: hộp đã được đóng sau khi xác minh đủ hai tai nghe. Mở một hộp có hai khe trống để bắt đầu lượt mới.",
+      "allowed": {"open_case": "S1_CASE_OPEN_EMPTY"},
+      "violations": {
+        "insert_earbud_1": "Chu trình đã hoàn tất; hãy mở lượt mới có đủ hai khe trống.",
+        "insert_earbud_2": "Chu trình đã hoàn tất; không ghi nhận thêm tai nghe.",
+        "close_case": "Hộp đã đóng và chu trình đã hoàn tất."
       }
     }
   }

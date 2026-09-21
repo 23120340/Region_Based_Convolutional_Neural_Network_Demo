@@ -27,7 +27,7 @@ class MonitorTests(unittest.TestCase):
                 JsonlEventLogger(path),
             )
             outcomes = [
-                monitor.submit_prediction(Prediction("pick_case", 0.95))
+                monitor.submit_prediction(Prediction("open_case", 0.95))
                 for _ in range(8)
             ]
             self.assertEqual(sum(item is not None for item in outcomes), 1)
@@ -38,5 +38,4 @@ class MonitorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
 

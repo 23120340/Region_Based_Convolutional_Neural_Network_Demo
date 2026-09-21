@@ -1,0 +1,79 @@
+{
+  "baseline": "earbud_v1",
+  "captured_at": "2026-09-21T03:25:43-04:00",
+  "git": {
+    "branch": "main",
+    "head": "18347cb18dca53e640a29b50931579056effecb0",
+    "working_tree_clean": false,
+    "note": "HEAD không đại diện đầy đủ cho baseline vì working tree có cả thay đổi staged và unstaged khi đóng băng."
+  },
+  "source_snapshot": {
+    "algorithm": "sha256-of-sorted-sha256-list",
+    "sha256": "001df3fe5040df7f48ccc184481a87cce766c7943cc00f0cf00d83279c66f32b",
+    "scope": ["src", "scripts", "configs", "tests", "docs"],
+    "excluded": ["__pycache__"],
+    "note": "Hash được lấy trước khi thêm bốn file config earbud_v2."
+  },
+  "backup": {
+    "path": "artifacts/baselines/earbud_v1",
+    "files": 32,
+    "bytes": 26392402,
+    "contains": [
+      "action_model",
+      "earbud_merged_detector",
+      "annotations.csv",
+      "configs",
+      "pyproject.toml",
+      "requirements-camera.txt",
+      "requirements-ml.txt"
+    ]
+  },
+  "action_model": {
+    "checkpoint": "artifacts/baselines/earbud_v1/action_model/best.pt",
+    "sha256": "6e434c95b598aa07138b306cc563243e9cdf6585af16da05b624784aff536153",
+    "seed": 42,
+    "epochs_configured": 30,
+    "sample_fps": 10.0,
+    "sequence_length": 16,
+    "backbone": "google/vit-base-patch16-224"
+  },
+  "detector": {
+    "checkpoint": "artifacts/baselines/earbud_v1/earbud_merged_detector/weights/best.pt",
+    "sha256": "e92007f4c6ac427e4d6c1b487310ff30b81cb97356db0b00ab71e6c4742167ab",
+    "seed": 0,
+    "deterministic": true,
+    "epochs": 60,
+    "image_size": 640,
+    "batch": 8,
+    "base_model": "yolo26n.pt"
+  },
+  "annotations": {
+    "path": "artifacts/baselines/earbud_v1/annotations.csv",
+    "sha256": "94753df3bff0797f8df3c988beb0ecd6c0a29c3a4e38f022a18f2c58675887cb"
+  },
+  "inspection_environment": {
+    "hostname": "debian",
+    "os": "Debian GNU/Linux, kernel 6.12.101+deb13-amd64",
+    "architecture": "x86_64",
+    "cpu": "11th Gen Intel(R) Core(TM) i7-11850HE @ 2.60GHz",
+    "physical_cores": 8,
+    "logical_cpus": 16,
+    "memory_gib": 15,
+    "display_adapter": "Intel TigerLake-H GT1 UHD Graphics",
+    "nvidia_gpu": null,
+    "cuda": null,
+    "python": "3.13.5",
+    "packages": {
+      "torch": null,
+      "torchvision": null,
+      "ultralytics": null,
+      "transformers": null,
+      "opencv-python": null,
+      "numpy": null,
+      "scikit-learn": null,
+      "PyYAML": null,
+      "Pillow": null
+    }
+  },
+  "training_environment_note": "Phiên bản Python/thư viện, CUDA và GPU của môi trường đã tạo checkpoint cũ không được lưu trong artifact, nên không thể khôi phục đáng tin cậy từ repository. args.yaml chỉ cho biết device để trống (auto)."
+}

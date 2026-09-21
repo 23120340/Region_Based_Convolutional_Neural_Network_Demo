@@ -251,7 +251,8 @@ def write_data_yaml(out_root: Path) -> Path:
     yaml_path = out_root / "data.yaml"
     names_str = str(UNIFIED_CLASSES).replace("'", '"')
     yaml_path.write_text(
-        f"path: {out_root.as_posix()}\n"
+        # Không ghi đường dẫn tuyệt đối của máy hiện tại. Khi không có `path`,
+        # Ultralytics và validator đều resolve các split từ thư mục data.yaml.
         f"train: train/images\n"
         f"val:   valid/images\n"
         f"test:  test/images\n"

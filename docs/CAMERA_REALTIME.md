@@ -70,13 +70,14 @@ python scripts/run_camera.py `
 ```
 
 Hệ thống sẽ tự động:
-1. Nạp checkpoint tai nghe đã huấn luyện tại `artifacts/training/earbud_detector/weights/best.pt` (hoặc open-vocabulary prompt nếu chưa có checkpoint).
-2. Phát hiện 3 lớp: `Case`, `Earbud`, `Empty_Slot`.
-3. Tự động ánh xạ phím tắt mô phỏng theo số bước của quy trình tai nghe:
-   - Phím `1`: `pick_case` (Đặt hộp sạc vào vùng lắp).
-   - Phím `2`: `insert_earbud` (Lắp tai nghe vào khe trống).
-   - Phím `3`: `close_case` (Đóng nắp hộp sạc).
-   - Phím `SPACE`: Xác nhận gợi ý tự động từ detector khi linh kiện ổn định trong WORK ZONE.
+1. Nạp checkpoint tại `artifacts/training/earbud_merged_detector/weights/best.pt`.
+2. Phát hiện đúng 5 lớp: `open_case`, `close_case`, `earbud`, `empty_left`, `empty_right`.
+3. Dùng `is_inside()` và số khe trống để sinh hai sự kiện lắp tai riêng biệt:
+   - Phím `1`: `open_case`.
+   - Phím `2`: `insert_earbud_1`.
+   - Phím `3`: `insert_earbud_2`.
+   - Phím `4`: `close_case`.
+   - Phím `SPACE`: Xác nhận gợi ý tự động từ detector khi không dùng `--auto-advance`.
    - Phím `R`: Reset chu trình về trạng thái ban đầu `S0_IDLE`.
    - Phím `S`: Chụp ảnh màn hình lưu vào `artifacts/screenshots/`.
    - Phím `Q` hoặc `Esc`: Thoát ứng dụng.

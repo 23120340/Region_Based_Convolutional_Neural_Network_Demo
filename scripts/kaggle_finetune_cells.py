@@ -26,6 +26,7 @@ import os, glob
 # ─── SỬA ĐƯỜNG DẪN NÀY NẾU CẦN ─────────────────────────────
 # Đây là đường dẫn dataset của bạn trên Kaggle
 DATASET_ROOT = '/kaggle/input/datasets/shintheanother/earbud-dtsv1/earbud_merged'
+EXPECTED_CLASSES = ['open_case', 'close_case', 'earbud', 'empty_left', 'empty_right']
 
 # Kiểm tra thư mục tồn tại
 assert os.path.isdir(DATASET_ROOT), f"Không tìm thấy dataset tại: {DATASET_ROOT}"
@@ -38,8 +39,19 @@ for split in ['train', 'valid', 'test']:
     lbls = glob.glob(os.path.join(DATASET_ROOT, split, 'labels', '*'))
     print(f"  {split:5s}: {len(imgs)} ảnh, {len(lbls)} labels")
 
+# Dataset phải được gán lại thật sự, không chỉ đổi tên các lớp cũ.
+import yaml
+source_yaml = os.path.join(DATASET_ROOT, 'data.yaml')
+with open(source_yaml, encoding='utf-8') as f:
+    source_names = yaml.safe_load(f).get('names', [])
+if isinstance(source_names, dict):
+    source_names = [source_names[i] for i in sorted(source_names)]
+assert len(source_names) == 5 and set(source_names) == set(EXPECTED_CLASSES), (
+    f'Những nhãn hiện tại: {source_names}; bắt buộc: {EXPECTED_CLASSES}. '
+    'Hãy gán lại nhãn open/close và empty_left/empty_right trước khi train.'
+)
+
 # ─── Tạo data.yaml mới với đường dẫn TUYỆT ĐỐI ─────────────
-# KHÔNG đọc lại file yaml cũ (tránh lỗi \r\n trên Windows)
 yaml_path = '/kaggle/working/data_earbud.yaml'
 
 yaml_content = f\"\"\"path: {DATASET_ROOT}
@@ -47,8 +59,8 @@ train: train/images
 val: valid/images
 test: test/images
 
-nc: 6
-names: ['Earphone_Case', 'Earbud', 'Empty_Slot', 'Left_Earbud', 'Right_Earbud', 'Hand']
+nc: 5
+names: {source_names}
 \"\"\"
 
 with open(yaml_path, 'w', encoding='utf-8') as f:

@@ -16,6 +16,15 @@ class VisionClass:
 
 
 @dataclass(frozen=True)
+class EarbudGeometryConfig:
+    open_case_label: str
+    closed_case_label: str
+    earbud_labels: tuple[str, ...]
+    empty_slot_labels: tuple[str, ...]
+    containment_threshold: float = 0.6
+
+
+@dataclass(frozen=True)
 class CameraConfig:
     model: str
     confidence: float
@@ -24,6 +33,13 @@ class CameraConfig:
     dwell_frames: int
     work_zone: NormalizedZone
     classes: tuple[VisionClass, ...]
+    capture_width: int = 1280
+    capture_height: int = 720
+    capture_fps: int = 30
+    capture_buffer_size: int = 1
+    half_precision: bool = True
+    max_detections: int = 50
+    earbud_geometry: EarbudGeometryConfig | None = None
 
     @property
     def prompts(self) -> list[str]:
@@ -69,11 +85,47 @@ def load_camera_config(path: str | Path) -> CameraConfig:
     if len(zone_values) != 4:
         raise ValueError("work_zone_normalized phải có bốn giá trị")
 
+    geometry_raw = raw.get("earbud_geometry")
+    geometry: EarbudGeometryConfig | None = None
+    if geometry_raw is not None:
+        _labels = labels
+        open_case_label = str(geometry_raw.get("open_case_label", ""))
+        closed_case_label = str(geometry_raw.get("closed_case_label", ""))
+        earbud_labels = tuple(str(item) for item in geometry_raw.get("earbud_labels", []))
+        empty_slot_labels = tuple(
+            str(item) for item in geometry_raw.get("empty_slot_labels", [])
+        )
+        referenced = {open_case_label, closed_case_label, *earbud_labels, *empty_slot_labels}
+        unknown = referenced - _labels
+        if unknown:
+            raise ValueError(f"earbud_geometry dùng label không tồn tại: {sorted(unknown)}")
+        if not open_case_label or not closed_case_label:
+            raise ValueError("earbud_geometry phải khai báo nhãn hộp mở và hộp đóng")
+        if not earbud_labels or len(empty_slot_labels) != 2:
+            raise ValueError("earbud_geometry cần nhãn earbud và đúng 2 nhãn khe trống")
+        threshold = float(geometry_raw.get("containment_threshold", 0.6))
+        if not 0.0 < threshold <= 1.0:
+            raise ValueError("containment_threshold phải nằm trong (0, 1]")
+        geometry = EarbudGeometryConfig(
+            open_case_label=open_case_label,
+            closed_case_label=closed_case_label,
+            earbud_labels=earbud_labels,
+            empty_slot_labels=empty_slot_labels,
+            containment_threshold=threshold,
+        )
+
     return CameraConfig(
         model=str(raw.get("model", "yolov8s-worldv2.pt")),
         confidence=float(raw.get("confidence", 0.12)),
         image_size=int(raw.get("image_size", 640)),
         infer_every_n_frames=max(1, int(raw.get("infer_every_n_frames", 2))),
+        capture_width=max(1, int(raw.get("capture_width", 1280))),
+        capture_height=max(1, int(raw.get("capture_height", 720))),
+        capture_fps=max(1, int(raw.get("capture_fps", 30))),
+        capture_buffer_size=max(1, int(raw.get("capture_buffer_size", 1))),
+        half_precision=bool(raw.get("half_precision", True)),
+        max_detections=max(1, int(raw.get("max_detections", 50))),
+        earbud_geometry=geometry,
         dwell_frames=max(1, int(raw.get("dwell_frames", 4))),
         work_zone=NormalizedZone(*(float(value) for value in zone_values)),
         classes=tuple(classes),

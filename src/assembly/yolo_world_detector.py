@@ -24,7 +24,25 @@ class YoloWorldDetector:
             ) from error
 
         self.config = config
-        self.device = device
+        try:
+            import torch
+        except ImportError as error:
+            raise RuntimeError(
+                "Thiếu PyTorch. Chạy: python -m pip install -r requirements-camera.txt"
+            ) from error
+
+        cuda_available = torch.cuda.is_available()
+        self.device = device if device is not None else (0 if cuda_available else "cpu")
+        requested_device = str(self.device).lower()
+        self.use_half = config.half_precision and cuda_available and requested_device not in {
+            "cpu",
+            "mps",
+        }
+        if cuda_available:
+            # Camera inference has a stable input shape, so cuDNN can retain the
+            # fastest convolution algorithms after its initial warm-up.
+            torch.backends.cudnn.benchmark = True
+            torch.backends.cuda.matmul.allow_tf32 = True
         selected_model = model_path or config.model
         self.open_vocabulary = "world" in Path(selected_model).name.lower()
         if self.open_vocabulary:
@@ -39,6 +57,8 @@ class YoloWorldDetector:
             conf=self.config.confidence,
             imgsz=self.config.image_size,
             device=self.device,
+            half=self.use_half,
+            max_det=self.config.max_detections,
             verbose=False,
         )
         if not results or results[0].boxes is None:

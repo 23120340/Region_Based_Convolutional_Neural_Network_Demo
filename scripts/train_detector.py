@@ -37,7 +37,7 @@ def main() -> int:
     try:
         from ultralytics import YOLO
     except ImportError as error:
-        raise SystemExit("Thiáº¿u ultralytics. HÃ£y cÃ i requirements-camera.txt") from error
+        raise SystemExit("Thiếu ultralytics. Hãy cài requirements-camera.txt") from error
 
     parser = argparse.ArgumentParser(description="Fine-tune a closed-set component detector")
     parser.add_argument("--data", type=Path, default=DEFAULT_DATA)
@@ -46,14 +46,14 @@ def main() -> int:
     parser.add_argument("--image-size", type=int, default=640)
     parser.add_argument("--batch", type=int, default=8)
     parser.add_argument("--device", default=None)
-    parser.add_argument("--name", default=None, help="TÃªn run / thÆ° má»¥c lÆ°u checkpoint trong artifacts/training/")
+    parser.add_argument("--name", default=None, help="Tên run / thư mục lưu checkpoint trong artifacts/training/")
     args = parser.parse_args()
 
     report = inspect_detection_dataset(args.data)
     print(format_detection_report(report))
     if not report.is_trainable:
         raise SystemExit(
-            "Dataset chÆ°a thá»ƒ train. HÃ£y xá»­ lÃ½ toÃ n bá»™ má»¥c trong pháº§n Training blockers á»Ÿ trÃªn."
+            "Dataset chưa thể train. Hãy xử lý toàn bộ mục trong phần Training blockers ở trên."
         )
 
     run_name = args.name or _infer_run_name(args.data)

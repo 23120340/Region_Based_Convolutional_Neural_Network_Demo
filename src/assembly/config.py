@@ -88,7 +88,23 @@ def load_config(path: str | Path) -> AssemblyConfig:
             _require(target in states, f"{state_name} trỏ tới state lạ {target!r}")
         for action, message in violations.items():
             _require(action in actions, f"{state_name} có violation action lạ {action!r}")
-            _require(isinstance(message, str) and bool(message), f"violation {action!r} thiếu message")
+            if isinstance(message, str):
+                _require(bool(message), f"violation {action!r} thiếu message")
+                continue
+            _require(
+                isinstance(message, dict),
+                f"violation {action!r} phải là chuỗi hoặc object",
+            )
+            violation_message = message.get("message")
+            target_state = message.get("target_state")
+            _require(
+                isinstance(violation_message, str) and bool(violation_message),
+                f"violation {action!r} thiếu message",
+            )
+            _require(
+                target_state in states,
+                f"violation {action!r} trỏ tới state lạ {target_state!r}",
+            )
 
     return AssemblyConfig(
         project=str(raw.get("project", config_path.stem)),
@@ -99,4 +115,3 @@ def load_config(path: str | Path) -> AssemblyConfig:
         workflow=tuple(workflow),
         states=states,
     )
-

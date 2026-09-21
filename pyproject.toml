@@ -3,13 +3,12 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pen-assembly-mvp"
+name = "hybrid-assembly-monitor"
 version = "0.1.0"
-description = "Config-driven MVP for monitoring click-pen assembly"
+description = "Reusable YOLO and ViT-BiLSTM framework for assembly monitoring"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
 
 [tool.setuptools.packages.find]
 where = ["src"]
-

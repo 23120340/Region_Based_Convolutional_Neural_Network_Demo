@@ -1,21 +1,21 @@
+# Python
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .venv/
-artifacts/
-checkpoints/
+*.egg-info/
+
+# Generated outputs and model weights (root-level local directories)
+/artifacts/
+/checkpoints/
+/models/
 *.pt
-data/raw_videos/
-data/features_cache/
-datasets/pen_parts/raw
-datasets/pen_parts/images/
-datasets/pen_parts/labels/
-datasets/**/*.cache
-data/pen_actions/raw_videos/
-data/pen_actions/features/
 *.h5
-datasets/earbud_merged.zip
-datasets/earbud_merged/
-data/earbud_actions/raw_videos/
-data/earbud_actions/features/
-datasets/dataset_earbud/
+
+# Large local source files. These stay on disk and are not uploaded to GitHub.
+/datasets/
+data/**/raw_videos/
+data/**/features/
+data/features_cache/
+*.zip
+*.docx

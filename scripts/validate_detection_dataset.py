@@ -29,7 +29,7 @@ def main() -> int:
     report = inspect_detection_dataset(args.data)
     print(format_detection_report(report))
     if not report.is_trainable:
-        print("\nBLOCKED: HÃ£y gÃ¡n bounding box há»£p lá»‡ trÆ°á»›c khi train YOLO.")
+        print("\nBLOCKED: Hãy gán bounding box hợp lệ trước khi train YOLO.")
         return 2
     return 0
 

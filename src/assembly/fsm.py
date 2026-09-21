@@ -81,7 +81,7 @@ class ConfigurableAssemblyTracker:
 
         rule = self.config.states[self.state]
         allowed: dict[str, str] = rule.get("allowed", {})
-        violations: dict[str, str] = rule.get("violations", {})
+        violations: dict[str, str | dict[str, str]] = rule.get("violations", {})
 
         if action in allowed:
             if self.state in {self.config.initial_state, self.config.completed_state}:
@@ -94,7 +94,23 @@ class ConfigurableAssemblyTracker:
             return self._outcome("PASS", action, previous, message)
 
         if action in violations:
-            return self._outcome("VIOLATION", action, previous, violations[action])
+            violation = violations[action]
+            if isinstance(violation, str):
+                return self._outcome("VIOLATION", action, previous, violation)
+
+            # A physical regression (for example, an earbud being removed)
+            # remains a VIOLATION, but the FSM must also follow the real scene.
+            # Otherwise a later close_case could incorrectly PASS from the old
+            # state even though an already-confirmed component is now missing.
+            target_state = violation["target_state"]
+            self.state = target_state
+            self._restore_completed_steps(target_state)
+            return self._outcome(
+                "VIOLATION",
+                action,
+                previous,
+                violation["message"],
+            )
 
         expected = ", ".join(self.expected_actions) or "không có"
         return self._outcome(
@@ -103,6 +119,19 @@ class ConfigurableAssemblyTracker:
             previous,
             f"Không được thực hiện {action!r} tại {self.state}; bước hợp lệ: {expected}.",
         )
+
+    def _restore_completed_steps(self, target_state: str) -> None:
+        """Keep progress consistent after a configured violation rollback."""
+
+        completed: list[str] = []
+        for step in self.config.workflow:
+            completed.append(step.action)
+            if step.state == target_state:
+                break
+        else:
+            completed = []
+        self.completed_steps = completed
+        self._last_accepted_action = completed[-1] if completed else None
 
     def _outcome(
         self,
@@ -122,4 +151,3 @@ class ConfigurableAssemblyTracker:
             is_complete=self.is_complete,
             timestamp=datetime.now(timezone.utc).isoformat(),
         )
-

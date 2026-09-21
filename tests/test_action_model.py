@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from assembly.action_config import load_action_model_config
 from assembly.models import PenAssemblyActionNet
+from assembly.models.vit_lstm_recognizer import ViTLstmActionRecognizer
 
 
 class ActionModelTests(unittest.TestCase):
@@ -44,6 +45,37 @@ class ActionModelTests(unittest.TestCase):
         model = PenAssemblyActionNet(8, 4, 1, 3, bidirectional=False)
         with self.assertRaisesRegex(ValueError, "shape"):
             model(torch.randn(5, 8))
+
+    def test_cached_embeddings_produce_prediction_without_encoder(self) -> None:
+        recognizer = ViTLstmActionRecognizer.__new__(ViTLstmActionRecognizer)
+        recognizer.config = load_action_model_config(ROOT / "configs" / "action_earbud_config.json")
+        recognizer.device = torch.device("cpu")
+        temporal = recognizer.config.temporal
+        recognizer.model = PenAssemblyActionNet(
+            input_dim=recognizer.config.spatial.embedding_dim,
+            hidden_dim=temporal.hidden_dim,
+            num_layers=temporal.num_layers,
+            num_classes=len(recognizer.config.actions),
+            dropout=0.0,
+            bidirectional=temporal.bidirectional,
+            head_dim=temporal.head_dim,
+        ).eval()
+        embeddings = torch.randn(
+            recognizer.config.temporal.sequence_length,
+            recognizer.config.spatial.embedding_dim,
+        )
+        prediction = recognizer.predict_embeddings(embeddings)
+        self.assertIn(prediction.action, recognizer.config.actions)
+        self.assertGreaterEqual(prediction.confidence, 0.0)
+        self.assertLessEqual(prediction.confidence, 1.0)
+
+    def test_cached_embeddings_validate_feature_dimension(self) -> None:
+        recognizer = ViTLstmActionRecognizer.__new__(ViTLstmActionRecognizer)
+        recognizer.config = load_action_model_config(ROOT / "configs" / "action_earbud_config.json")
+        recognizer.device = torch.device("cpu")
+        embeddings = torch.randn(recognizer.config.temporal.sequence_length, 10)
+        with self.assertRaisesRegex(ValueError, "Embedding"):
+            recognizer.predict_embeddings(embeddings)
 
 
 if __name__ == "__main__":

@@ -12,11 +12,21 @@ from assembly.camera_config import load_camera_config
 class CameraConfigTests(unittest.TestCase):
     def test_earbud_camera_config_loads_properly(self) -> None:
         config = load_camera_config(ROOT / "configs" / "camera_earbud_config.json")
-        self.assertEqual(config.action_map["Earphone_Case"], "pick_case")
-        self.assertEqual(config.action_map["Earbud"], "insert_earbud")
-        self.assertEqual(config.action_map["Left_Earbud"], "insert_earbud")
-        self.assertNotIn("Empty_Slot", config.action_map)
-        self.assertEqual(len(config.classes), 6)
+        self.assertEqual(config.action_map["open_case"], "open_case")
+        self.assertEqual(config.action_map["close_case"], "close_case")
+        self.assertNotIn("earbud", config.action_map)
+        self.assertNotIn("empty_left", config.action_map)
+        self.assertEqual(len(config.classes), 5)
+        self.assertIsNotNone(config.earbud_geometry)
+        self.assertEqual(
+            config.earbud_geometry.empty_slot_labels,
+            ("empty_left", "empty_right"),
+        )
+        self.assertEqual(config.image_size, 512)
+        self.assertEqual((config.capture_width, config.capture_height), (960, 540))
+        self.assertEqual(config.capture_buffer_size, 1)
+        self.assertTrue(config.half_precision)
+        self.assertEqual(config.max_detections, 20)
 
     def test_detection_spatial_containment(self) -> None:
         from assembly.vision import Detection
@@ -51,4 +61,3 @@ class CameraConfigTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
