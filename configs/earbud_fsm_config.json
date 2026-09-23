@@ -11,6 +11,7 @@
     "insert_earbud_2": "Lắp tai nghe thứ hai",
     "remove_earbud_to_one": "Tháo một tai nghe sau khi đã lắp đủ",
     "remove_earbud_to_zero": "Tháo tai nghe đã lắp ra khỏi hộp",
+    "wrong_earbud_side": "Lắp tai nghe trái/phải nhầm khe",
     "close_case": "Đóng nắp hộp sạc"
   },
   "workflow": [
@@ -49,6 +50,7 @@
       "message": "Hộp đã mở và có 2 khe trống. Hãy lắp tai nghe thứ nhất vào trong hộp.",
       "allowed": {"insert_earbud_1": "S2_FIRST_EARBUD_INSERTED"},
       "violations": {
+        "wrong_earbud_side": "VIOLATION: Tai nghe đang nằm nhầm khe trái/phải. Hãy tháo ra và lắp đúng bên.",
         "open_case": "Hộp đã được xác minh mở; hãy lắp tai thứ nhất.",
         "insert_earbud_2": "Lỗi bỏ bước: chưa xác minh tai thứ nhất và trạng thái còn 1 khe trống.",
         "close_case": "Đóng hộp quá sớm: cả hai khe vẫn đang trống, chưa lắp tai nghe nào."
@@ -58,6 +60,7 @@
       "message": "Đã xác minh tai thứ nhất nằm trong hộp và còn 1 khe trống. Hãy lắp tai thứ hai.",
       "allowed": {"insert_earbud_2": "S3_TWO_EARBUDS_INSERTED"},
       "violations": {
+        "wrong_earbud_side": "VIOLATION: Tai nghe đang nằm nhầm khe trái/phải. Hãy tháo ra và sửa đúng bên trước khi tiếp tục.",
         "open_case": "Hộp đã mở và tai thứ nhất đã được xác minh; hãy lắp tai thứ hai.",
         "insert_earbud_1": "Tai thứ nhất đã được ghi nhận; không được tính lặp thành tai thứ hai.",
         "remove_earbud_to_zero": {
@@ -71,6 +74,7 @@
       "message": "Đã xác minh đủ 2 tai trong hộp và 0 khe trống. Hãy đóng nắp hộp.",
       "allowed": {"close_case": "S4_COMPLETED"},
       "violations": {
+        "wrong_earbud_side": "VIOLATION: Phát hiện tai nghe trái/phải nằm nhầm khe; không được đóng nắp.",
         "open_case": "Hộp đang mở và đã đủ hai tai; bước tiếp theo là đóng nắp.",
         "insert_earbud_1": "Hộp đã đủ hai tai nghe; không được lắp thêm.",
         "insert_earbud_2": "Tai thứ hai đã được ghi nhận; hãy đóng nắp hộp.",

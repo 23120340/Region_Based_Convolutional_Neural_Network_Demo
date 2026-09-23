@@ -4,7 +4,7 @@ import torch
 from torch import nn
 
 
-class PenAssemblyActionNet(nn.Module):
+class AssemblyActionNet(nn.Module):
     """Configurable LSTM/BiLSTM classifier for cached spatial embeddings."""
 
     def __init__(

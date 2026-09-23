@@ -9,7 +9,7 @@ from .fsm import ConfigurableAssemblyTracker, FsmOutcome
 from .model_contract import Prediction
 from .monitor import AssemblyMonitor, JsonlEventLogger
 from .paths import DEFAULT_CONFIG, DEFAULT_EVENT_LOG
-from .scenarios import SCENARIOS
+from .scenarios import SCENARIO_LABELS, build_scenarios
 from .smoother import TemporalDebouncer
 
 
@@ -21,10 +21,11 @@ RESULT_COLORS = {
 }
 
 
-class PenAssemblyApp:
+class AssemblyApp:
     def __init__(self, root: tk.Tk, config: AssemblyConfig) -> None:
         self.root = root
         self.config = config
+        self.scenarios = build_scenarios(config)
         tracker = ConfigurableAssemblyTracker(config)
         debouncer = TemporalDebouncer(idle_actions=config.idle_actions)
         self.monitor = AssemblyMonitor(
@@ -34,7 +35,7 @@ class PenAssemblyApp:
         )
         self._scenario_job: str | None = None
 
-        root.title("Pen Assembly Monitor — MVP")
+        root.title(f"Assembly Monitor — {config.project}")
         root.geometry("1180x760")
         root.minsize(980, 650)
         root.configure(bg="#f2f4f7")
@@ -67,7 +68,7 @@ class PenAssemblyApp:
         outer = ttk.Frame(self.root, padding=20)
         outer.pack(fill="both", expand=True)
 
-        ttk.Label(outer, text="Hệ thống giám sát lắp ráp bút bi", style="Title.TLabel").pack(anchor="w")
+        ttk.Label(outer, text=f"Giám sát quy trình: {self.config.project}", style="Title.TLabel").pack(anchor="w")
         ttk.Label(
             outer,
             text="MVP kiểm chứng debouncer + FSM; các nút đang mô phỏng đầu ra của model nhận diện.",
@@ -137,13 +138,8 @@ class PenAssemblyApp:
         ttk.Label(right, text="Kịch bản kiểm thử tự động", style="CardTitle.TLabel").grid(row=0, column=0, sticky="w")
         scenario_bar = ttk.Frame(right, style="Card.TFrame")
         scenario_bar.grid(row=0, column=0, sticky="e")
-        scenario_labels = {
-            "correct": "Đúng quy trình",
-            "missing_spring": "Quên lò xo",
-            "missing_refill": "Quên ruột",
-            "premature_test": "Bấm thử sớm",
-        }
-        for name, label in scenario_labels.items():
+        for name in self.scenarios:
+            label = SCENARIO_LABELS[name]
             ttk.Button(
                 scenario_bar,
                 text=label,
@@ -182,7 +178,7 @@ class PenAssemblyApp:
             self.root.after_cancel(self._scenario_job)
             self._scenario_job = None
         self.reset(cancel_scenario=False)
-        self._run_actions(iter(SCENARIOS[name]))
+        self._run_actions(iter(self.scenarios[name]))
 
     def _run_actions(self, actions: Iterable[str]) -> None:
         iterator = iter(actions)
@@ -236,5 +232,5 @@ class PenAssemblyApp:
 def run_app() -> None:
     config = load_config(DEFAULT_CONFIG)
     root = tk.Tk()
-    PenAssemblyApp(root, config)
+    AssemblyApp(root, config)
     root.mainloop()

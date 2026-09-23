@@ -17,56 +17,56 @@ from assembly.vision import (
 class VisionLogicTests(unittest.TestCase):
     def setUp(self) -> None:
         self.zone = NormalizedZone(0.25, 0.25, 0.75, 0.75)
-        self.gate = ComponentDwellGate({"barrel": "pick_barrel", "spring": "insert_spring"}, dwell_frames=3)
+        self.gate = ComponentDwellGate({"case": "open_case", "earbud": "insert_earbud_1"}, dwell_frames=3)
 
     def detection(self, label: str, box=(40, 40, 60, 60)) -> Detection:
         return Detection(label, label, 0.9, box)
 
     def test_expected_component_emits_after_dwell(self) -> None:
-        self.assertIsNone(self.gate.update([self.detection("barrel")], ["pick_barrel"], self.zone, 100, 100))
-        self.assertIsNone(self.gate.update([self.detection("barrel")], ["pick_barrel"], self.zone, 100, 100))
-        result = self.gate.update([self.detection("barrel")], ["pick_barrel"], self.zone, 100, 100)
-        self.assertEqual(result.action, "pick_barrel")
+        self.assertIsNone(self.gate.update([self.detection("case")], ["open_case"], self.zone, 100, 100))
+        self.assertIsNone(self.gate.update([self.detection("case")], ["open_case"], self.zone, 100, 100))
+        result = self.gate.update([self.detection("case")], ["open_case"], self.zone, 100, 100)
+        self.assertEqual(result.action, "open_case")
         self.assertTrue(result.is_expected)
 
     def test_wrong_component_is_reported_for_fsm_validation(self) -> None:
         result = None
         for _ in range(3):
-            result = self.gate.update([self.detection("spring")], ["pick_barrel"], self.zone, 100, 100)
+            result = self.gate.update([self.detection("earbud")], ["open_case"], self.zone, 100, 100)
         self.assertIsNotNone(result)
-        self.assertEqual(result.action, "insert_spring")
+        self.assertEqual(result.action, "insert_earbud_1")
         self.assertFalse(result.is_expected)
 
     def test_held_component_is_not_reemitted_after_acknowledgement(self) -> None:
-        barrel = self.detection("barrel")
+        case = self.detection("case")
         for _ in range(3):
-            self.gate.update([barrel], ["pick_barrel"], self.zone, 100, 100)
+            self.gate.update([case], ["open_case"], self.zone, 100, 100)
         self.gate.acknowledge()
         results = [
-            self.gate.update([barrel], ["insert_spring"], self.zone, 100, 100)
+            self.gate.update([case], ["insert_earbud_1"], self.zone, 100, 100)
             for _ in range(5)
         ]
         self.assertTrue(all(result is None for result in results))
 
     def test_new_component_emits_while_completed_part_remains_visible(self) -> None:
-        barrel = self.detection("barrel")
-        spring = self.detection("spring", (45, 45, 55, 55))
+        case = self.detection("case")
+        earbud = self.detection("earbud", (45, 45, 55, 55))
         for _ in range(3):
-            self.gate.update([barrel], ["pick_barrel"], self.zone, 100, 100)
+            self.gate.update([case], ["open_case"], self.zone, 100, 100)
         self.gate.acknowledge()
         result = None
         for _ in range(3):
-            result = self.gate.update([barrel, spring], ["insert_spring"], self.zone, 100, 100) or result
-        self.assertEqual(result.action, "insert_spring")
+            result = self.gate.update([case, earbud], ["insert_earbud_1"], self.zone, 100, 100) or result
+        self.assertEqual(result.action, "insert_earbud_1")
 
     def test_component_outside_zone_resets_dwell(self) -> None:
-        inside = self.detection("barrel")
-        outside = self.detection("barrel", (0, 0, 10, 10))
-        self.gate.update([inside], ["pick_barrel"], self.zone, 100, 100)
-        self.gate.update([inside], ["pick_barrel"], self.zone, 100, 100)
-        self.assertIsNone(self.gate.update([outside], ["pick_barrel"], self.zone, 100, 100))
+        inside = self.detection("case")
+        outside = self.detection("case", (0, 0, 10, 10))
+        self.gate.update([inside], ["open_case"], self.zone, 100, 100)
+        self.gate.update([inside], ["open_case"], self.zone, 100, 100)
+        self.assertIsNone(self.gate.update([outside], ["open_case"], self.zone, 100, 100))
         self.assertIsNone(self.gate.current_suggestion)
-        self.assertIsNone(self.gate.update([inside], ["pick_barrel"], self.zone, 100, 100))
+        self.assertIsNone(self.gate.update([inside], ["open_case"], self.zone, 100, 100))
 
     def test_zone_rejects_invalid_coordinates(self) -> None:
         with self.assertRaises(ValueError):
@@ -79,16 +79,20 @@ class EarbudGeometryGateTests(unittest.TestCase):
         self.gate = EarbudAssemblyGate(
             open_case_label="open_case",
             closed_case_label="close_case",
-            earbud_labels=["earbud"],
+            earbud_labels=["left_earbud", "right_earbud"],
             empty_slot_labels=["empty_left", "empty_right"],
+            earbud_slot_pairs={
+                "left_earbud": "empty_left",
+                "right_earbud": "empty_right",
+            },
             dwell_frames=2,
             containment_threshold=0.6,
         )
         self.case = self.detection("open_case", (10, 10, 90, 90))
         self.left_slot = self.detection("empty_left", (20, 40, 38, 68))
         self.right_slot = self.detection("empty_right", (62, 40, 80, 68))
-        self.left_earbud = self.detection("earbud", (20, 40, 38, 68))
-        self.right_earbud = self.detection("earbud", (62, 40, 80, 68), 0.88)
+        self.left_earbud = self.detection("left_earbud", (20, 40, 38, 68))
+        self.right_earbud = self.detection("right_earbud", (62, 40, 80, 68), 0.88)
 
     @staticmethod
     def detection(
@@ -127,7 +131,7 @@ class EarbudGeometryGateTests(unittest.TestCase):
         self.assertEqual(self.gate.status.earbuds_inside, 2)
 
     def test_earbud_outside_case_never_counts_as_inserted(self) -> None:
-        outside = self.detection("earbud", (92, 40, 99, 60))
+        outside = self.detection("left_earbud", (92, 40, 99, 60))
         result = self.stable_update(
             [self.case, outside, self.right_slot], ["insert_earbud_1"]
         )
@@ -176,6 +180,59 @@ class EarbudGeometryGateTests(unittest.TestCase):
             [self.case, self.left_earbud, self.right_earbud], ["insert_earbud_2"]
         )
         self.assertEqual(reinserted.action, "insert_earbud_2")
+
+    def test_left_earbud_in_right_slot_is_a_violation(self) -> None:
+        left_earbud_in_right_slot = self.detection(
+            "left_earbud", (62, 40, 80, 68)
+        )
+        result = self.stable_update(
+            [self.case, left_earbud_in_right_slot, self.left_slot],
+            ["insert_earbud_1"],
+        )
+        self.assertEqual(result.action, "wrong_earbud_side")
+        self.assertFalse(result.is_expected)
+        self.assertTrue(self.gate.status.is_error)
+        self.assertIn("left_earbud", self.gate.status.message)
+
+    def test_right_earbud_in_left_slot_is_a_violation(self) -> None:
+        right_earbud_in_left_slot = self.detection(
+            "right_earbud", (20, 40, 38, 68)
+        )
+        result = self.stable_update(
+            [self.case, right_earbud_in_left_slot, self.right_slot],
+            ["insert_earbud_1"],
+        )
+        self.assertEqual(result.action, "wrong_earbud_side")
+        self.assertFalse(result.is_expected)
+        self.assertIn("right_earbud", self.gate.status.message)
+
+    def test_removing_both_earbuds_one_by_one_emits_two_violations(self) -> None:
+        self.stable_update(
+            [self.case, self.left_slot, self.right_slot], ["open_case"]
+        )
+        self.gate.acknowledge()
+        self.stable_update(
+            [self.case, self.left_earbud, self.right_slot], ["insert_earbud_1"]
+        )
+        self.gate.acknowledge()
+        self.stable_update(
+            [self.case, self.left_earbud, self.right_earbud], ["insert_earbud_2"]
+        )
+        self.gate.acknowledge()
+
+        removed_right = self.stable_update(
+            [self.case, self.left_earbud, self.right_slot], ["close_case"]
+        )
+        self.assertEqual(removed_right.action, "remove_earbud_to_one")
+        self.assertFalse(removed_right.is_expected)
+        self.gate.acknowledge(rearm=True)
+
+        removed_left = self.stable_update(
+            [self.case, self.left_slot, self.right_slot], ["insert_earbud_2"]
+        )
+        self.assertEqual(removed_left.action, "remove_earbud_to_zero")
+        self.assertFalse(removed_left.is_expected)
+        self.assertTrue(self.gate.status.is_error)
 
     def test_missing_slots_do_not_pass_without_two_inside_earbuds(self) -> None:
         result = self.stable_update([self.case], ["insert_earbud_2"])

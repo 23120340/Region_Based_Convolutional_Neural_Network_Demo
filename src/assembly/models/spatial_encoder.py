@@ -7,7 +7,7 @@ import torch
 
 
 class ViTSpatialEncoder:
-    """Frozen Hugging Face ViT feature extractor returning CLS embeddings."""
+    """Frozen Hugging Face vision-transformer encoder returning CLS embeddings."""
 
     def __init__(
         self,
@@ -17,7 +17,7 @@ class ViTSpatialEncoder:
         local_files_only: bool = False,
     ) -> None:
         try:
-            from transformers import AutoImageProcessor, AutoModelForImageClassification
+            from transformers import AutoImageProcessor, AutoModel, AutoModelForImageClassification
         except ImportError as error:
             raise RuntimeError("Thiếu transformers; hãy cài requirements-ml.txt") from error
 
@@ -27,10 +27,18 @@ class ViTSpatialEncoder:
                 model_name,
                 local_files_only=local_files_only,
             )
-            classifier = AutoModelForImageClassification.from_pretrained(
-                model_name,
-                local_files_only=local_files_only,
-            )
+            if "dinov2" in model_name.casefold():
+                backbone = AutoModel.from_pretrained(
+                    model_name,
+                    local_files_only=local_files_only,
+                )
+            else:
+                classifier = AutoModelForImageClassification.from_pretrained(
+                    model_name,
+                    local_files_only=local_files_only,
+                )
+                prefix = str(getattr(classifier, "base_model_prefix", ""))
+                backbone = getattr(classifier, prefix, None)
         except OSError as error:
             if local_files_only:
                 raise RuntimeError(
@@ -39,14 +47,10 @@ class ViTSpatialEncoder:
                 ) from error
             raise
 
-        # Checkpoint google/vit-base-patch16-224 chứa cả classifier ImageNet.
-        # Nạp đúng kiến trúc classification rồi chỉ giữ encoder giúp tránh báo
-        # classifier UNEXPECTED / pooler MISSING; hai phần đó không được dùng để
-        # tạo CLS embedding cho BiLSTM.
-        prefix = str(getattr(classifier, "base_model_prefix", ""))
-        backbone = getattr(classifier, prefix, None)
+        # The legacy ImageNet ViT is loaded through its classifier wrapper and
+        # reduced to the base encoder. DINOv2 is a native base checkpoint.
         if backbone is None:
-            raise RuntimeError(f"Không tìm thấy backbone {prefix!r} trong {model_name!r}")
+            raise RuntimeError(f"Không tìm thấy backbone trong {model_name!r}")
         self.backbone = backbone.to(self.device).eval()
         self.embedding_dim = int(self.backbone.config.hidden_size)
         if freeze:

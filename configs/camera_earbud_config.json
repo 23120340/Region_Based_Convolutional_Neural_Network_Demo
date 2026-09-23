@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "model": "artifacts/training/earbud_merged_detector/weights/best.pt",
+  "model": "artifacts/training/earbud_geometry_detector/weights/best.pt",
   "confidence": 0.35,
   "image_size": 512,
   "infer_every_n_frames": 1,
@@ -15,8 +15,12 @@
   "earbud_geometry": {
     "open_case_label": "open_case",
     "closed_case_label": "close_case",
-    "earbud_labels": ["earbud"],
+    "earbud_labels": ["left_earbud", "right_earbud"],
     "empty_slot_labels": ["empty_left", "empty_right"],
+    "earbud_slot_pairs": {
+      "left_earbud": "empty_left",
+      "right_earbud": "empty_right"
+    },
     "containment_threshold": 0.6
   },
   "classes": [
@@ -33,10 +37,16 @@
       "color_bgr": [80, 80, 230]
     },
     {
-      "label": "earbud",
-      "prompt": "earbud",
+      "label": "left_earbud",
+      "prompt": "left_earbud",
       "action": null,
       "color_bgr": [230, 145, 56]
+    },
+    {
+      "label": "right_earbud",
+      "prompt": "right_earbud",
+      "action": null,
+      "color_bgr": [255, 100, 80]
     },
     {
       "label": "empty_left",

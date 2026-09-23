@@ -9,8 +9,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_SOURCE = ROOT / "datasets" / "pen_parts" / "raw" / "person01" / "session02"
-DEFAULT_OUTPUT = ROOT / "artifacts" / "detection_pilot" / "person01_session02"
+DEFAULT_SOURCE = ROOT / "datasets" / "earbud_geometry" / "raw"
+DEFAULT_OUTPUT = ROOT / "artifacts" / "detection_pilot" / "earbud_geometry"
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
 

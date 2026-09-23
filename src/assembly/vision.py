@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Mapping
 
 
 @dataclass(frozen=True)
@@ -193,6 +193,7 @@ class EarbudAssemblyGate:
         closed_case_label: str,
         earbud_labels: Iterable[str],
         empty_slot_labels: Iterable[str],
+        earbud_slot_pairs: Mapping[str, str] | None = None,
         dwell_frames: int = 3,
         containment_threshold: float = 0.6,
     ) -> None:
@@ -204,6 +205,18 @@ class EarbudAssemblyGate:
         self.closed_case_label = closed_case_label
         self.earbud_labels = frozenset(earbud_labels)
         self.empty_slot_labels = frozenset(empty_slot_labels)
+        self.earbud_slot_pairs = dict(earbud_slot_pairs or {})
+        invalid_pairs = [
+            (earbud_label, slot_label)
+            for earbud_label, slot_label in self.earbud_slot_pairs.items()
+            if earbud_label not in self.earbud_labels
+            or slot_label not in self.empty_slot_labels
+        ]
+        if invalid_pairs:
+            raise ValueError(
+                "earbud_slot_pairs chứa nhãn không thuộc earbud_labels/empty_slot_labels: "
+                f"{invalid_pairs}"
+            )
         self.dwell_frames = dwell_frames
         self.containment_threshold = containment_threshold
         self._candidate_action: str | None = None
@@ -321,12 +334,27 @@ class EarbudAssemblyGate:
         action: str | None = None
         label = case.label
         confidence = case.confidence
+        wrong_side_pair: tuple[Detection, Detection] | None = None
+        if len(earbud_candidates) == 1 and len(slot_candidates) == 1:
+            inserted_earbud = earbud_candidates[0]
+            visible_empty_slot = slot_candidates[0]
+            if self.earbud_slot_pairs.get(inserted_earbud.label) == visible_empty_slot.label:
+                wrong_side_pair = (inserted_earbud, visible_empty_slot)
         # Positive evidence of a newly visible empty slot means the physical
         # scene regressed after an insertion was already accepted. Emit a
         # dedicated violation action instead of misclassifying it as open_case
         # or a repeated insertion. The dwell filter below still has to confirm
         # this scene for multiple inference results.
-        if (
+        if wrong_side_pair is not None:
+            wrong_earbud, own_empty_slot = wrong_side_pair
+            action = "wrong_earbud_side"
+            label = wrong_earbud.label
+            confidence = min(case.confidence, wrong_earbud.confidence, own_empty_slot.confidence)
+            message = (
+                f"LỖI: {wrong_earbud.label} đang nằm nhầm bên vì "
+                f"{own_empty_slot.label} vẫn còn trống. Hãy tháo ra và lắp đúng khe."
+            )
+        elif (
             "insert_earbud_2" in expected
             and empty_slots == 2
             and earbuds_inside == 0

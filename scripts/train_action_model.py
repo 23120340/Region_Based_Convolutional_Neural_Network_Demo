@@ -28,7 +28,7 @@ from torch.utils.data import DataLoader
 
 from assembly.action_config import load_action_model_config
 from assembly.action_dataset import CachedActionWindowDataset
-from assembly.models.action_net import PenAssemblyActionNet
+from assembly.models.action_net import AssemblyActionNet
 from assembly.paths import DEFAULT_ACTION_ANNOTATIONS, DEFAULT_ACTION_CONFIG, DEFAULT_FEATURE_CACHE
 
 
@@ -70,11 +70,10 @@ def main() -> int:
     args = parser.parse_args()
 
     if not args.annotations.is_file():
-        template = DEFAULT_ACTION_ANNOTATIONS.parent / "annotations_SAMPLE.csv"
         raise SystemExit(
             "Chưa có file annotation cho video hành động. "
-            f"Hãy sao chép {template} thành {args.annotations}, "
-            "sau đó gán nhãn thời gian hoặc dùng scripts/annotate_actions.py."
+            "Hãy dùng scripts/annotate_actions.py để tạo đúng mốc thời gian "
+            f"cho {args.annotations}; không sao chép mốc từ file mẫu."
         )
     if not args.features_dir.is_dir() or not any(args.features_dir.glob("*.npy")):
         raise SystemExit(
@@ -104,7 +103,7 @@ def main() -> int:
     train_loader = DataLoader(train_dataset, batch_size=config.training.batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=config.training.batch_size, shuffle=False)
 
-    model = PenAssemblyActionNet(
+    model = AssemblyActionNet(
         input_dim=config.spatial.embedding_dim,
         hidden_dim=temporal.hidden_dim,
         num_layers=temporal.num_layers,
@@ -129,8 +128,9 @@ def main() -> int:
         train_loss, train_true, train_pred = _run_epoch(model, train_loader, criterion, device, optimizer)
         val_loss, val_true, val_pred = _run_epoch(model, val_loader, criterion, device)
         scheduler.step()
-        train_f1 = f1_score(train_true, train_pred, average="macro", zero_division=0)
-        val_f1 = f1_score(val_true, val_pred, average="macro", zero_division=0)
+        label_ids = list(range(len(config.actions)))
+        train_f1 = f1_score(train_true, train_pred, labels=label_ids, average="macro", zero_division=0)
+        val_f1 = f1_score(val_true, val_pred, labels=label_ids, average="macro", zero_division=0)
         row = {
             "epoch": epoch,
             "train_loss": train_loss,
@@ -152,6 +152,7 @@ def main() -> int:
                     "config": asdict(config),
                     "epoch": epoch,
                     "val_macro_f1": val_f1,
+                    "allow_same_session": args.allow_same_session,
                 },
                 args.output / "best.pt",
             )
@@ -165,4 +166,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

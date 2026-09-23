@@ -25,6 +25,20 @@ class ProjectConfigTests(unittest.TestCase):
         self.assertIsInstance(engine, EarbudFusionEngine)
         self.assertEqual(engine.stable_frames, 2)
 
+    def test_earbud_v2_profile_requires_open_case_action(self) -> None:
+        profile = load_project_config(
+            ROOT / "configs" / "projects" / "earbud_v2.json",
+            ROOT,
+        )
+        engine = build_fusion_engine(profile.fusion)
+        self.assertIsInstance(engine, EarbudFusionEngine)
+        self.assertEqual(engine.case_action, "open_case")
+        self.assertTrue(engine.require_case_action)
+        self.assertEqual(
+            engine.earbud_slot_pairs,
+            {"left_earbud": "empty_left", "right_earbud": "empty_right"},
+        )
+
     def test_profile_rejects_path_outside_project(self) -> None:
         raw = json.loads((ROOT / "configs" / "projects" / "earbud.json").read_text(encoding="utf-8"))
         raw["camera_config"] = "../outside.json"

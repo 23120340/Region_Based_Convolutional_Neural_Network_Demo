@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from assembly.action_config import load_action_model_config
-from assembly.models import PenAssemblyActionNet
+from assembly.models import AssemblyActionNet
 from assembly.models.vit_lstm_recognizer import ViTLstmActionRecognizer
 
 
@@ -21,9 +21,24 @@ class ActionModelTests(unittest.TestCase):
         self.assertEqual(config.temporal.sequence_length, 16)
         self.assertEqual(len(config.actions), 4)
 
+        v2 = load_action_model_config(ROOT / "configs" / "action_earbud_v2_config.json")
+        self.assertEqual(v2.spatial.backbone, "facebook/dinov2-small")
+        self.assertEqual(v2.spatial.embedding_dim, 384)
+        self.assertEqual(
+            v2.actions,
+            (
+                "idle",
+                "open_case",
+                "insert_first_earbud",
+                "insert_second_earbud",
+                "close_case",
+                "remove_earbud",
+            ),
+        )
+
     def test_bilstm_uses_final_forward_and_backward_hidden_states(self) -> None:
         torch.manual_seed(7)
-        model = PenAssemblyActionNet(
+        model = AssemblyActionNet(
             input_dim=8,
             hidden_dim=4,
             num_layers=2,
@@ -42,7 +57,7 @@ class ActionModelTests(unittest.TestCase):
         self.assertEqual(tuple(logits.shape), (2, 3))
 
     def test_rejects_invalid_input_rank(self) -> None:
-        model = PenAssemblyActionNet(8, 4, 1, 3, bidirectional=False)
+        model = AssemblyActionNet(8, 4, 1, 3, bidirectional=False)
         with self.assertRaisesRegex(ValueError, "shape"):
             model(torch.randn(5, 8))
 
@@ -51,7 +66,7 @@ class ActionModelTests(unittest.TestCase):
         recognizer.config = load_action_model_config(ROOT / "configs" / "action_earbud_config.json")
         recognizer.device = torch.device("cpu")
         temporal = recognizer.config.temporal
-        recognizer.model = PenAssemblyActionNet(
+        recognizer.model = AssemblyActionNet(
             input_dim=recognizer.config.spatial.embedding_dim,
             hidden_dim=temporal.hidden_dim,
             num_layers=temporal.num_layers,
@@ -80,4 +95,3 @@ class ActionModelTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -24,7 +24,7 @@ from torch.utils.data import DataLoader
 
 from assembly.action_config import load_action_model_config
 from assembly.action_dataset import CachedActionWindowDataset
-from assembly.models.action_net import PenAssemblyActionNet
+from assembly.models.action_net import AssemblyActionNet
 from assembly.paths import DEFAULT_ACTION_ANNOTATIONS, DEFAULT_ACTION_CONFIG, DEFAULT_FEATURE_CACHE
 
 
@@ -65,7 +65,7 @@ def main() -> int:
     )
     loader = DataLoader(dataset, batch_size=config.training.batch_size, shuffle=False)
     device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
-    model = PenAssemblyActionNet(
+    model = AssemblyActionNet(
         config.spatial.embedding_dim,
         temporal.hidden_dim,
         temporal.num_layers,
@@ -89,6 +89,8 @@ def main() -> int:
             predictions.extend(torch.argmax(logits, dim=1).cpu().tolist())
     label_ids = list(range(len(config.actions)))
     report = {
+        "actions": list(config.actions),
+        "allow_same_session": args.allow_same_session,
         "split": args.split,
         "windows": len(dataset),
         "macro_f1": f1_score(true_labels, predictions, labels=label_ids, average="macro", zero_division=0),
@@ -105,10 +107,16 @@ def main() -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps({"split": args.split, "windows": len(dataset), "macro_f1": report["macro_f1"]}, indent=2))
+    if args.allow_same_session:
+        print("PILOT cùng session: kết quả chưa đo độ chính xác trên session mới.")
+    print("Confusion matrix: hàng = nhãn thật, cột = dự đoán; thứ tự:", list(config.actions))
+    for row in report["confusion_matrix"]:
+        print(row)
+    print(classification_report(true_labels, predictions, labels=label_ids,
+                                target_names=list(config.actions), zero_division=0, digits=4))
     print(f"Đã lưu báo cáo: {args.output}")
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

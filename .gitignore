@@ -15,7 +15,7 @@ __pycache__/
 # Large local source files. These stay on disk and are not uploaded to GitHub.
 /datasets/
 data/**/raw_videos/
-data/**/features/
+data/**/features*/
 data/features_cache/
 *.zip
 *.docx

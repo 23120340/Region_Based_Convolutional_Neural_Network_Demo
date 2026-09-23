@@ -1,154 +1,100 @@
-# Camera thời gian thực: nhận diện linh kiện bút và nối với quy trình
+# Camera realtime và thu ảnh YOLO cho tai nghe
 
-## 1. Cái gì chạy được ngay?
+Chạy lệnh từ `G:\Internship\RBCNN_Demo`.
 
-`scripts/run_camera.py` mở webcam, dùng YOLO-World với các text prompt trong `configs/camera_config.json`, khoanh vùng năm lớp:
-
-- `barrel`: thân dưới;
-- `refill`: ruột mực;
-- `spring`: lò xo;
-- `cap`: nắp/thân trên;
-- `assembled_pen`: bút đã lắp.
-
-YOLO-World là open-vocabulary detector: có thể thử các lớp mới bằng `set_classes()` mà chưa cần train. Webcam hoặc OpenCV frame đều là nguồn inference được Ultralytics hỗ trợ. Tài liệu chính thức: [YOLO-World](https://docs.ultralytics.com/models/yolo-world/), [Predict mode](https://docs.ultralytics.com/modes/predict/).
-
-## 2. Vì sao vẫn có phím Space?
-
-Bounding box chỉ xác nhận linh kiện xuất hiện. Ba ví dụ dễ gây sai:
-
-- thấy lò xo trên tay không có nghĩa lò xo đã được luồn vào ruột;
-- thấy nắp trong vùng lắp không có nghĩa nắp đã được vặn chặt;
-- thấy cây bút hoàn chỉnh không chứng minh người dùng vừa bấm thử.
-
-Do đó chế độ mặc định dùng detector để **gợi ý** bước khi linh kiện đúng nằm ổn định trong WORK ZONE, sau đó dùng Space để xác nhận. `--auto-advance` có sẵn để thử nghiệm bốn bước đầu, nhưng chưa phải chế độ nghiệm thu.
-
-## 3. Cách bố trí và chạy
-
-1. Dán giấy nền ít hoa văn, ánh sáng đều.
-2. Đặt bốn khay ở phía trên hoặc hai bên, bên ngoài khung WORK ZONE màu vàng.
-3. Để camera laptop nhìn nghiêng xuống bàn; nếu có tripod thì top-down tốt hơn.
-4. Tháo rời bút và đặt mỗi linh kiện cách nhau đủ xa.
-5. Chạy:
+## 1. Kiểm tra camera
 
 ```powershell
-python scripts/run_camera.py --source 0
+python scripts/run_earbud.py --list-cameras
 ```
 
-Nếu camera mặc định không đúng, thử `--source 1`. Có thể chỉnh ROI chuẩn hóa, confidence, prompt và tần suất inference tại `configs/camera_config.json`.
+Camera laptop thường là `0`; camera USB thường là `1` hoặc `2`. Khi đang chạy, nhấn `C` để chuyển qua camera khả dụng tiếp theo.
 
-### Chọn và chuyển camera
-
-Gắn camera USB vào laptop, sau đó kiểm tra các index khả dụng:
-
-```powershell
-python scripts/run_camera.py --list-cameras
-```
-
-Khởi động trực tiếp bằng camera mong muốn:
-
-```powershell
-python scripts/run_camera.py --source 1
-```
-
-Trong cửa sổ đang chạy, nhấn `C` để chương trình đóng camera hiện tại, dò lại các index từ 0 đến 5 và chuyển sang camera kế tiếp. Nhờ dò lại tại thời điểm nhấn `C`, camera USB vừa gắn thêm cũng có thể được phát hiện. FSM giữ nguyên bước hiện tại, còn detection và gợi ý đang chờ được xóa để tránh mang kết quả từ camera cũ sang camera mới.
-
-Nếu máy có camera ở index lớn hơn 5:
-
-```powershell
-python scripts/run_camera.py --source 0 --max-camera-index 10
-```
-
-### Chạy hệ thống giám sát lắp ráp tai nghe (Earbud Assembly)
-
-Để chuyển từ bài toán bút bi sang bài toán hộp tai nghe (Earbud), truyền hai cấu hình tương ứng:
-
-```powershell
-python scripts/run_camera.py `
-  --source 0 `
-  --camera-config configs/camera_earbud_config.json `
-  --fsm-config configs/earbud_fsm_config.json
-```
-
-Hệ thống sẽ tự động:
-1. Nạp checkpoint tại `artifacts/training/earbud_merged_detector/weights/best.pt`.
-2. Phát hiện đúng 5 lớp: `open_case`, `close_case`, `earbud`, `empty_left`, `empty_right`.
-3. Dùng `is_inside()` và số khe trống để sinh hai sự kiện lắp tai riêng biệt:
-   - Phím `1`: `open_case`.
-   - Phím `2`: `insert_earbud_1`.
-   - Phím `3`: `insert_earbud_2`.
-   - Phím `4`: `close_case`.
-   - Phím `SPACE`: Xác nhận gợi ý tự động từ detector khi không dùng `--auto-advance`.
-   - Phím `R`: Reset chu trình về trạng thái ban đầu `S0_IDLE`.
-   - Phím `S`: Chụp ảnh màn hình lưu vào `artifacts/screenshots/`.
-   - Phím `Q` hoặc `Esc`: Thoát ứng dụng.
-
-### Model ImageNet-1K dùng ở đâu?
-
-File `models/tf_model.h5` hiện có cấu trúc ViT-Base: patch 16×16, embedding 768 chiều, 12 encoder layer và classifier 1.000 lớp. Đây là trọng số pretrained tốt để khởi tạo bộ trích đặc trưng không gian cho action model ViT + LSTM.
-
-Nó không thay thế YOLO detector vì ImageNet-1K phân loại toàn ảnh và không trả bounding box. Pipeline dự kiến là:
-
-```text
-YOLO checkpoint (.pt)        -> box và class linh kiện
-ViT ImageNet-1K (.h5)        -> embedding 768 chiều từng frame
-LSTM checkpoint sau khi train -> action theo chuỗi frame
-FSM                          -> đúng/sai quy trình
-```
-
-File `.h5` là weights theo cấu trúc Hugging Face/Keras, vì vậy khi tích hợp cần đúng ViT config và image processor tương ứng; không sử dụng nó làm đối số `--model` của script YOLO camera.
-
-Ngưỡng `confidence` zero-shot mặc định thấp (`0.12`) để thăm dò. Nếu xuất hiện nhiều box sai, tăng dần lên `0.20`–`0.30`. Nếu bỏ sót, giảm nhẹ hoặc đưa camera gần hơn. Lò xo là đối tượng khó nhất vì rất nhỏ.
-
-## 4. Có cần dataset và train không?
-
-Không bắt buộc để chạy bản thử zero-shot, nhưng **cần** nếu mục tiêu là demo ổn định hoặc đánh giá khoa học. Dataset detector phải là ảnh của chính bút/góc quay dự kiến và có bounding box cho từng linh kiện.
-
-Mốc khởi đầu thực dụng:
-
-- 200–400 ảnh đã gán box, gồm tay che một phần, nền và ánh sáng khác nhau;
-- ưu tiên nhiều ảnh cận cảnh cho `spring` và `refill`;
-- có ảnh âm tính: bàn trống, tay, điện thoại, kéo, bút khác;
-- chia train/val/test theo buổi quay hoặc người, không chia các frame liền nhau ngẫu nhiên.
-
-Thu ảnh:
+## 2. Chụp ảnh làm dataset detection
 
 ```powershell
 python scripts/capture_detection_images.py --camera 0
 ```
 
-Nhấn Space để lưu vào `datasets/pen_parts/raw/`, sau đó gán bounding box bằng CVAT hoặc Label Studio và xuất YOLO detection format:
+Mặc định ảnh được lưu vào `datasets/earbud_geometry/raw/`. Đổi camera hoặc thư mục:
+
+```powershell
+python scripts/capture_detection_images.py `
+  --camera 1 `
+  --output datasets/earbud_geometry/raw/person02/session01
+```
+
+Phím: `SPACE` lưu ảnh, `Q`/`Esc` thoát. Mỗi ảnh nên thay đổi vị trí hộp, góc xoay, tay che, ánh sáng và trạng thái lắp; không giữ hàng chục ảnh gần như giống nhau.
+
+Khoanh đúng sáu lớp:
 
 ```text
-datasets/pen_parts/
-├── images/train, images/val, images/test
-├── labels/train, labels/val, labels/test
-└── data.yaml
+open_case
+close_case
+left_earbud
+right_earbud
+empty_left
+empty_right
 ```
 
-Mỗi file label có các dòng `class_id x_center y_center width height`, tọa độ chuẩn hóa từ 0 đến 1. Cấu trúc dataset và API huấn luyện tuân theo [Ultralytics detection datasets](https://docs.ultralytics.com/datasets/detect/).
+`open_case` phải bao vùng chứa hai tai/khe. Gán đúng tai vật lý bằng `left_earbud` hoặc `right_earbud`; không vẽ thêm box `earbud` chung trên cùng vật thể. Chỉ vẽ `empty_left` hoặc `empty_right` khi khe tương ứng thật sự trống và nhìn thấy.
 
-Train baseline:
+## 3. Kiểm tra và train YOLO
+
+Nếu export từ Roboflow đã có `train/images`, `valid/images`, `test/images`, dùng thẳng file YAML; không chạy split lại.
 
 ```powershell
-python scripts/train_detector.py --data datasets/pen_parts/data.yaml --epochs 60
+python scripts/validate_detection_dataset.py `
+  --data datasets/earbud_geometry/data.yaml
+
+python scripts/train_detector.py `
+  --data datasets/earbud_geometry/data.yaml `
+  --model yolo11n.pt `
+  --epochs 100 `
+  --device 0 `
+  --name earbud_geometry_detector
 ```
 
-Checkpoint sẽ nằm dưới `artifacts/training/pen_parts_detector/weights/best.pt`. Chạy nó bằng:
+Checkpoint mục tiêu:
+
+```text
+artifacts/training/earbud_geometry_detector/weights/best.pt
+```
+
+Dataset 3 lớp `Case/Earbud/Empty_Slot` và dataset baseline cũ không thể tự đổi chính xác sang sáu lớp geometry trái/phải; phải sửa annotation trước.
+
+## 4. Chạy realtime
 
 ```powershell
-python scripts/run_camera.py --source 0 --model artifacts/training/pen_parts_detector/weights/best.pt
+python scripts/run_earbud.py `
+  --mode camera `
+  --source 0 `
+  --auto-advance `
+  --device 0
 ```
 
-Script camera tự chọn backend: checkpoint có `world` trong tên dùng custom prompt YOLO-World; checkpoint fine-tune đóng lớp dùng tên class `barrel/refill/spring/cap/assembled_pen` từ `data.yaml`.
+Phím điều khiển:
 
-## 5. Để tự động hoàn toàn cần thêm dữ liệu gì?
+| Phím | Chức năng |
+|---|---|
+| `C` | Đổi camera |
+| `S` | Lưu frame có bounding box/overlay vào `artifacts/screenshots/` |
+| `R` | Reset chu trình |
+| `SPACE` | Xác nhận gợi ý hiện tại bằng tay |
+| `1`–`9` | Mô phỏng bước FSM; chỉ dùng debug |
+| `Q` / `Esc` | Thoát |
 
-Detector linh kiện và action recognizer là hai bài toán khác nhau:
+Không dùng phím số hoặc `SPACE` khi đánh giá độ chính xác tự động vì chúng bỏ qua một phần bằng chứng model.
 
-| Model | Nhãn | Trả lời câu hỏi |
-|---|---|---|
-| Detector YOLO | Bounding box `barrel/refill/spring/cap/pen` | Linh kiện nào đang ở đâu? |
-| ViT + LSTM | Đoạn video `pick/insert/screw/test` | Người dùng đang thực hiện hành động nào? |
-| FSM | State và luật chuyển | Hành động có đúng thứ tự không? |
+## 5. Hybrid v2
 
-Muốn bỏ Space, cần video gán nhãn theo thời gian cho năm action, ngoài ảnh bounding box. Khi đó đầu ra ViT + LSTM đi qua debouncer rồi vào FSM hiện có.
+Sau khi có cả YOLO v2 và action model v2:
+
+```powershell
+python scripts/run_hybrid.py `
+  --project configs/projects/earbud_v2.json `
+  --source 0 `
+  --device 0
+```
+
+Lần đầu dùng DINOv2 khi cache chưa có cần mạng và cờ `--allow-download`. Sau khi model đã nằm trong cache Hugging Face, runtime chạy local.

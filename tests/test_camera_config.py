@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from assembly.camera_config import load_camera_config
+from assembly.yolo_world_detector import _normalise_class_name
 
 
 class CameraConfigTests(unittest.TestCase):
@@ -14,13 +15,18 @@ class CameraConfigTests(unittest.TestCase):
         config = load_camera_config(ROOT / "configs" / "camera_earbud_config.json")
         self.assertEqual(config.action_map["open_case"], "open_case")
         self.assertEqual(config.action_map["close_case"], "close_case")
-        self.assertNotIn("earbud", config.action_map)
+        self.assertNotIn("left_earbud", config.action_map)
+        self.assertNotIn("right_earbud", config.action_map)
         self.assertNotIn("empty_left", config.action_map)
-        self.assertEqual(len(config.classes), 5)
+        self.assertEqual(len(config.classes), 6)
         self.assertIsNotNone(config.earbud_geometry)
         self.assertEqual(
             config.earbud_geometry.empty_slot_labels,
             ("empty_left", "empty_right"),
+        )
+        self.assertEqual(
+            dict(config.earbud_geometry.earbud_slot_pairs),
+            {"left_earbud": "empty_left", "right_earbud": "empty_right"},
         )
         self.assertEqual(config.image_size, 512)
         self.assertEqual((config.capture_width, config.capture_height), (960, 540))
@@ -57,6 +63,10 @@ class CameraConfigTests(unittest.TestCase):
         self.assertTrue(earbud_inside.is_inside(case, threshold=0.9))
         self.assertFalse(earbud_outside.is_inside(case, threshold=0.1))
         self.assertEqual(earbud_outside.intersection_area(case), 0.0)
+
+    def test_closed_set_class_names_are_case_normalised(self) -> None:
+        self.assertEqual(_normalise_class_name("Left_Earbud"), "left_earbud")
+        self.assertEqual(_normalise_class_name("Right Earbud"), "right_earbud")
 
 
 if __name__ == "__main__":

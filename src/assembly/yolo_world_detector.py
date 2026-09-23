@@ -7,6 +7,10 @@ from .camera_config import CameraConfig
 from .vision import Detection
 
 
+def _normalise_class_name(value: str) -> str:
+    return value.strip().casefold().replace("-", "_").replace(" ", "_")
+
+
 class YoloWorldDetector:
     """Small adapter around Ultralytics YOLO-World with custom text prompts."""
 
@@ -66,12 +70,19 @@ class YoloWorldDetector:
 
         result = results[0]
         prompt_map = self.config.prompt_map
-        label_map = self.config.label_map
+        label_map = {
+            _normalise_class_name(label): vision_class
+            for label, vision_class in self.config.label_map.items()
+        }
         detections: list[Detection] = []
         boxes = result.boxes
         for xyxy, confidence, class_id in zip(boxes.xyxy, boxes.conf, boxes.cls):
             model_name = str(result.names[int(class_id.item())])
-            vision_class = prompt_map.get(model_name) if self.open_vocabulary else label_map.get(model_name)
+            vision_class = (
+                prompt_map.get(model_name)
+                if self.open_vocabulary
+                else label_map.get(_normalise_class_name(model_name))
+            )
             if vision_class is None:
                 continue
             coords = tuple(int(round(value)) for value in xyxy.detach().cpu().tolist())

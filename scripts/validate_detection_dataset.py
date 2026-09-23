@@ -23,8 +23,8 @@ def _configure_utf8_console() -> None:
 
 def main() -> int:
     _configure_utf8_console()
-    parser = argparse.ArgumentParser(description="Validate a YOLO pen-parts dataset before training")
-    parser.add_argument("--data", type=Path, default=ROOT / "datasets" / "pen_parts" / "data.yaml")
+    parser = argparse.ArgumentParser(description="Validate a YOLO earbud dataset before training")
+    parser.add_argument("--data", type=Path, default=ROOT / "datasets" / "earbud_geometry" / "data.yaml")
     args = parser.parse_args()
     report = inspect_detection_dataset(args.data)
     print(format_detection_report(report))
@@ -36,4 +36,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

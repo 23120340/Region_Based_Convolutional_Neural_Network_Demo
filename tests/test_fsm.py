@@ -57,6 +57,15 @@ class FsmTests(unittest.TestCase):
         self.assertIn("mới xác minh 1/2 tai", outcome.message)
         self.assertEqual(self.tracker.state, "S2_FIRST_EARBUD_INSERTED")
 
+    def test_wrong_earbud_side_is_violation_without_advancing(self) -> None:
+        self.tracker.process("open_case")
+
+        outcome = self.tracker.process("wrong_earbud_side")
+
+        self.assertEqual(outcome.type, "VIOLATION")
+        self.assertEqual(self.tracker.state, "S1_CASE_OPEN_EMPTY")
+        self.assertEqual(self.tracker.completed_steps, ["open_case"])
+
     def test_removal_violation_rolls_back_to_physical_state(self) -> None:
         self.run_actions("open_case", "insert_earbud_1", "insert_earbud_2")
 
@@ -105,4 +114,3 @@ class FsmTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -4,15 +4,16 @@ Cách dùng
 ---------
   python scripts/annotate_actions.py                    # dùng đường dẫn mặc định
   python scripts/annotate_actions.py --videos-dir data/earbud_actions/raw_videos \\
-      --output data/earbud_actions/annotations.csv \\
-      --config configs/action_earbud_config.json
+      --output data/earbud_actions/annotations_v2.csv \\
+      --config configs/action_earbud_v2_config.json
 
 Phím tắt khi đang xem video
 ----------------------------
   SPACE    : tạm dừng / tiếp tục
   s        : bắt đầu đánh dấu (SET START) của một đoạn hành động
   e        : kết thúc đánh dấu (SET END) và chọn nhãn qua terminal
-  r        : làm lại frame hiện tại (xem lại vùng vừa đánh dấu)
+  , / .    : lùi / tiến một frame để đặt mốc chính xác
+  u        : bỏ đoạn vừa gán trong video hiện tại
   b        : quay lại 5 giây
   f        : tua tới 5 giây
   q        : bỏ qua video này và chuyển sang video tiếp theo
@@ -29,6 +30,7 @@ from __future__ import annotations
 import argparse
 import csv
 import sys
+from collections import Counter
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -54,6 +56,15 @@ from assembly.paths import (
 
 
 VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm"}
+
+ACTION_HELP = {
+    "idle": "Chờ / không thao tác",
+    "open_case": "Mở hộp và đưa vào vùng thao tác",
+    "insert_first_earbud": "Lắp một tai vào hộp đang trống (0 → 1 tai)",
+    "insert_second_earbud": "Lắp tai còn lại khi trong hộp đã có một tai (1 → 2 tai)",
+    "close_case": "Đóng nắp hộp",
+    "remove_earbud": "Nhấc một tai nghe ra khỏi khe/hộp; không phân biệt trái/phải",
+}
 
 ANNOTATIONS_COLUMNS = [
     "video_id",
@@ -85,6 +96,9 @@ def _load_existing_annotations(output_path: Path) -> list[dict]:
         return []
     with output_path.open("r", encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
+        missing = set(ANNOTATIONS_COLUMNS) - set(reader.fieldnames or ())
+        if missing:
+            raise ValueError(f"Annotation thiếu cột: {sorted(missing)}")
         return list(reader)
 
 
@@ -102,7 +116,7 @@ def _ask_action_label(actions: tuple[str, ...], start: float, end: float) -> str
     print(f"\n  Đoạn từ {start:.2f}s → {end:.2f}s ({end - start:.2f}s)")
     print("  Chọn nhãn (hoặc 'skip' để bỏ qua đoạn này):")
     for i, action in enumerate(actions):
-        print(f"    {i}: {action}")
+        print(f"    {i}: {action} — {ACTION_HELP.get(action, action)}")
     print("    s: bỏ qua đoạn này")
     while True:
         choice = input("  Nhập số hoặc 's': ").strip().lower()
@@ -152,7 +166,7 @@ def annotate_video(
     print(f"\n{'='*60}")
     print(f"  Video: {video_path.name}")
     print(f"  FPS={fps:.1f}  Frames={total_frames}  Duration={duration:.2f}s")
-    print(f"  Phím: [SPACE]=dừng  [s]=start  [e]=end+gán nhãn  [b]=-5s  [f]=+5s  [q]=bỏ qua  [ESC]=thoát")
+    print("  Phím: [SPACE]=dừng [s]=start [e]=end+nhãn [b/f]=tua 5s [,/.]=từng frame [u]=bỏ nhãn vừa gán [q]=lưu+tiếp [ESC]=lưu+thoát")
     print(f"{'='*60}")
 
     meta = _parse_video_meta(video_path)
@@ -160,9 +174,18 @@ def annotate_video(
     mark_start: float | None = None
     paused = False
     pos_frame = 0
+    seek_frame: int | None = None
+    frame = None
 
     while True:
-        if not paused:
+        if seek_frame is not None:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, seek_frame)
+            ret, frame = cap.read()
+            if not ret:
+                break
+            pos_frame = seek_frame
+            seek_frame = None
+        elif not paused:
             ret, frame = cap.read()
             if not ret:
                 print("  [Hết video — nhấn q để sang video tiếp theo hoặc ESC để thoát]")
@@ -171,7 +194,7 @@ def annotate_video(
                 ret, frame = cap.read()
                 if not ret:
                     break
-            pos_frame = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+            pos_frame = max(0, int(cap.get(cv2.CAP_PROP_POS_FRAMES)) - 1)
 
         pos_sec = pos_frame / fps
 
@@ -188,7 +211,9 @@ def annotate_video(
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2)
 
         cv2.imshow(f"Annotate: {video_path.name}", display)
-        key = cv2.waitKey(30) & 0xFF  # ~30ms mỗi frame khi play
+        key = cv2.waitKey(30 if paused else max(1, round(1000 / fps))) & 0xFF
+        if ord("A") <= key <= ord("Z"):
+            key += ord("a") - ord("A")
 
         if key == 27:  # ESC
             cap.release()
@@ -205,7 +230,7 @@ def annotate_video(
             paused = not paused
 
         elif key == ord("s"):
-            mark_start = pos_sec
+            mark_start = round(pos_sec, 4)
             print(f"  [START đặt tại {mark_start:.2f}s]")
             paused = True
 
@@ -213,9 +238,16 @@ def annotate_video(
             if mark_start is None:
                 print("  [WARN] Chưa đặt START. Nhấn 's' trước.")
             else:
-                mark_end = pos_sec
+                # Include the displayed frame; adjacent segments use [start, end).
+                mark_end = round(min(duration, (pos_frame + 1) / fps), 4)
                 if mark_end <= mark_start:
                     print("  [WARN] END phải sau START. Điều chỉnh vị trí và nhấn 'e' lại.")
+                elif any(
+                    mark_start < float(row["end_time_s"])
+                    and mark_end > float(row["start_time_s"])
+                    for row in new_rows
+                ):
+                    print("  [WARN] Đoạn chồng thời gian với nhãn đã gán. Dùng u để bỏ đoạn sai.")
                 else:
                     # Tạm dừng video để hỏi nhãn qua terminal
                     cv2.destroyWindow(f"Annotate: {video_path.name}")
@@ -234,20 +266,17 @@ def annotate_video(
                     else:
                         print("  Bỏ qua đoạn này.")
                     mark_start = None
+                    paused = True
                     # Mở lại cửa sổ
                     cv2.imshow(f"Annotate: {video_path.name}", display)
 
-        elif key == ord("b"):  # lùi 5 giây
-            new_pos = max(0, pos_frame - int(5 * fps))
-            cap.set(cv2.CAP_PROP_POS_FRAMES, new_pos)
-            pos_frame = new_pos
+        elif key in (ord("b"), ord("f"), ord(","), ord(".")):
+            offset = {ord("b"): -int(5 * fps), ord("f"): int(5 * fps), ord(","): -1, ord("."): 1}[key]
+            seek_frame = max(0, min(total_frames - 1, pos_frame + offset))
             paused = True
-
-        elif key == ord("f"):  # tua 5 giây
-            new_pos = min(total_frames - 1, pos_frame + int(5 * fps))
-            cap.set(cv2.CAP_PROP_POS_FRAMES, new_pos)
-            pos_frame = new_pos
-            paused = True
+        elif key == ord("u") and new_rows:
+            removed = new_rows.pop()
+            print(f"  Bỏ đoạn vừa gán: {removed['action_name']} [{removed['start_time_s']}, {removed['end_time_s']})")
 
     cap.release()
     cv2.destroyAllWindows()
@@ -275,8 +304,16 @@ def main() -> int:
                         help="Đường dẫn file annotations.csv sẽ ghi ra")
     parser.add_argument("--config", type=Path, default=DEFAULT_ACTION_CONFIG,
                         help="File action_model_config.json (để lấy danh sách nhãn)")
+    parser.add_argument(
+        "--session",
+        action="append",
+        default=[],
+        metavar="ID",
+        help="Chỉ gán nhãn session này; có thể lặp lại, ví dụ --session 01 --session 02",
+    )
     parser.add_argument("--resume", action="store_true",
                         help="Nếu bật, bỏ qua video đã có annotation trong file output")
+    parser.add_argument("--list-videos", action="store_true", help="Xem menu nhãn và video được chọn; không mở GUI hoặc ghi CSV")
     args = parser.parse_args()
 
     config = load_action_model_config(args.config)
@@ -285,15 +322,43 @@ def main() -> int:
 
     videos = sorted(
         path for path in args.videos_dir.rglob("*")
-        if path.suffix.lower() in VIDEO_EXTENSIONS
+        if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
     )
+    if args.session:
+        selected_sessions = {str(value).strip() for value in args.session}
+        videos = [
+            path for path in videos
+            if _parse_video_meta(path)["session_id"] in selected_sessions
+        ]
+        print(f"  Lọc session: {sorted(selected_sessions)}")
+
     if not videos:
         raise SystemExit(f"Không tìm thấy video nào trong {args.videos_dir}")
 
     print(f"  Tìm thấy {len(videos)} video trong {args.videos_dir}")
+    duplicates = sorted(video_id for video_id, count in Counter(path.stem for path in videos).items() if count > 1)
+    if duplicates:
+        raise SystemExit(f"Video ID trùng nhau, cần đổi tên duy nhất: {duplicates}")
+    if args.list_videos:
+        for index, action in enumerate(actions):
+            print(f"  {index}: {action} — {ACTION_HELP.get(action, action)}")
+        for path in videos:
+            print(f"  {path} | {_parse_video_meta(path)}")
+        return 0
 
     # Đọc annotation đã có để --resume có thể bỏ qua
+    if args.output.exists() and not args.resume:
+        raise SystemExit(
+            f"File output đã tồn tại: {args.output}. "
+            "Dùng --resume để tiếp tục hoặc chọn file output mới để tránh ghi trùng."
+        )
     existing_annotations = _load_existing_annotations(args.output) if args.resume else []
+    unknown = sorted({row["action_name"] for row in existing_annotations} - set(actions))
+    if unknown:
+        raise SystemExit(
+            f"File cũ chứa nhãn không thuộc config: {unknown}. "
+            "Hãy gán nhãn lại vào CSV mới; không thể tự tách thời điểm insert_earbud thành hai lần lắp."
+        )
     existing_video_ids = {row["video_id"] for row in existing_annotations}
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -319,8 +384,8 @@ def main() -> int:
     print(f"  XONG. Tổng số annotation đã thêm: {total_added}")
     print(f"  File annotation: {args.output}")
     print(f"  Bước tiếp theo:")
-    print(f"    1. Mở {args.output} và chỉnh cột 'split' (train/val/test) thủ công")
-    print(f"    2. Chạy: python scripts/extract_spatial_features.py")
+    print(f'    python scripts/split_annotations.py --annotations "{args.output}" --config "{args.config}" --mode group-ratio')
+    print("    Hướng dẫn đủ 5 bước và cách thử một session: docs/LSTM_Training_Guide.md")
     print(f"{'='*60}")
     return 0
 

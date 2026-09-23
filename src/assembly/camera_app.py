@@ -17,14 +17,7 @@ from .yolo_world_detector import YoloWorldDetector
 from .fsm import ConfigurableAssemblyTracker
 
 
-DEFAULT_CAMERA_CONFIG = PROJECT_ROOT / "configs" / "camera_config.json"
-ACTION_KEYS = {
-    ord("1"): "pick_barrel",
-    ord("2"): "insert_refill",
-    ord("3"): "insert_spring",
-    ord("4"): "screw_cap",
-    ord("5"): "test_click",
-}
+DEFAULT_CAMERA_CONFIG = PROJECT_ROOT / "configs" / "camera_earbud_config.json"
 
 
 def _camera_source(value: str) -> int | str:
@@ -176,6 +169,7 @@ def run_camera(
             closed_case_label=geometry.closed_case_label,
             earbud_labels=geometry.earbud_labels,
             empty_slot_labels=geometry.empty_slot_labels,
+            earbud_slot_pairs=dict(geometry.earbud_slot_pairs),
             dwell_frames=camera_config.dwell_frames,
             containment_threshold=geometry.containment_threshold,
         )

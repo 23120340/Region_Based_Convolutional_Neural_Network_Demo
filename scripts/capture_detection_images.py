@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "datasets" / "pen_parts" / "raw"
+OUTPUT = ROOT / "datasets" / "earbud_geometry" / "raw"
 
 
 def _configure_utf8_console() -> None:
@@ -62,13 +62,13 @@ def main() -> int:
                 (30, 255, 80),
                 2,
             )
-            cv2.imshow("Capture Pen Dataset", preview)
+            cv2.imshow("Capture Earbud Dataset", preview)
             key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), 27):
                 break
             if key == 32:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                path = args.output / f"pen_{timestamp}_{saved:04d}.jpg"
+                path = args.output / f"earbud_{timestamp}_{saved:04d}.jpg"
                 if not cv2.imwrite(str(path), clean_frame):
                     raise SystemExit(f"Không lưu được ảnh: {path}")
                 saved += 1

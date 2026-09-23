@@ -2,7 +2,7 @@
   "schema_version": 1,
   "name": "earbud_v2",
   "display_name": "Earbud Assembly Monitor v2",
-  "camera_config": "configs/camera_earbud_v2_config.json",
+  "camera_config": "configs/camera_earbud_config.json",
   "fsm_config": "configs/earbud_v2_fsm_config.json",
   "action_config": "configs/action_earbud_v2_config.json",
   "action_model": "artifacts/action_model_v2/best.pt",
@@ -12,7 +12,13 @@
     "parameters": {
       "required_earbuds": 2,
       "stable_frames": 3,
-      "min_action_confidence": 0.6
+      "min_action_confidence": 0.6,
+      "case_action": "open_case",
+      "require_case_action": true,
+      "earbud_slot_pairs": {
+        "left_earbud": "empty_left",
+        "right_earbud": "empty_right"
+      }
     }
   }
 }

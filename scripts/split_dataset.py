@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import random
 import shutil
 import sys
@@ -16,16 +17,16 @@ if sys.stdout.encoding != "utf-8":
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DATASET = ROOT / "datasets" / "pen_parts"
+DEFAULT_DATASET = ROOT / "datasets" / "earbud_geometry"
 DEFAULT_RAW_IMAGES = DEFAULT_DATASET / "raw"
-DEFAULT_YAML = DEFAULT_DATASET / "data.yaml"
+DEFAULT_CAMERA_CONFIG = ROOT / "configs" / "camera_earbud_config.json"
 
 CLASS_NAMES = {
-    0: "barrel",
-    1: "refill",
-    2: "spring",
-    3: "cap",
-    4: "assembled_pen",
+    0: "open_case",
+    1: "close_case",
+    2: "earbud",
+    3: "empty_left",
+    4: "empty_right",
 }
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
@@ -124,20 +125,44 @@ def split_dataset(
         print("LƯU Ý:")
         print("  Các file nhãn .txt được tạo tự động hiện đang rỗng.")
         print("  Nếu train ngay lúc này, YOLO sẽ hiểu toàn bộ ảnh là nền (background, không có vật thể).")
-        print("  Để nhận diện được linh kiện bút, bạn cần dùng công cụ gán nhãn (Label Studio, CVAT, Roboflow...)")
+        print("  Để nhận diện được tai nghe và hộp sạc, bạn cần dùng công cụ gán nhãn (Label Studio, CVAT, Roboflow...)")
         print("  để khoanh bounding box và ghi tọa độ vào các file .txt này.")
         print("=" * 60)
 
     return counts
 
 
-def update_data_yaml(yaml_path: Path, dataset_dir: Path) -> None:
+def resolve_class_names(yaml_path: Path, camera_config: Path | None = None) -> dict[int, str]:
+    """Preserve existing label IDs; only new datasets use the geometry schema."""
+    existing = None
+    if yaml_path.exists():
+        raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8-sig"))
+        names = raw.get("names") if isinstance(raw, dict) else None
+        if isinstance(names, list):
+            existing = dict(enumerate(names))
+        elif isinstance(names, dict):
+            existing = {int(key): value for key, value in names.items()}
+        if not existing or set(existing) != set(range(len(existing))):
+            raise ValueError("data.yaml phải có names với ID liên tiếp từ 0; không tự gán lại ID.")
+
+    selected = None
+    if camera_config is not None:
+        raw = json.loads(camera_config.read_text(encoding="utf-8-sig"))
+        selected = {i: item["label"] for i, item in enumerate(raw["classes"])}
+        if existing is not None and existing != selected:
+            raise ValueError("Class ID/names trong data.yaml khác --camera-config; giữ nguyên dataset.")
+    return existing if existing is not None else (selected if selected is not None else CLASS_NAMES.copy())
+
+
+def update_data_yaml(
+    yaml_path: Path, dataset_dir: Path, class_names: dict[int, str] | None = None,
+) -> None:
     """Tạo hoặc cập nhật file data.yaml với đường dẫn chuẩn."""
     config = {
         "train": "images/train",
         "val": "images/val",
         "test": "images/test",
-        "names": CLASS_NAMES,
+        "names": class_names if class_names is not None else resolve_class_names(yaml_path),
     }
 
     # Khi data.yaml nằm ngay trong dataset root, bỏ `path` để Ultralytics
@@ -166,7 +191,9 @@ def main() -> int:
     parser.add_argument("--images-dir", type=Path, default=DEFAULT_RAW_IMAGES, help="Thư mục chứa ảnh thô")
     parser.add_argument("--labels-dir", type=Path, default=None, help="Thư mục chứa file label .txt (nếu có)")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_DATASET, help="Thư mục gốc của dataset")
-    parser.add_argument("--yaml-path", type=Path, default=DEFAULT_YAML, help="Đường dẫn file data.yaml")
+    parser.add_argument("--yaml-path", type=Path, default=None, help="Mặc định: <output-dir>/data.yaml")
+    parser.add_argument("--camera-config", type=Path, default=None,
+                        help="Class ID theo thứ tự classes; nếu YAML đã có thì phải khớp, không đổi nhãn")
     parser.add_argument("--train-ratio", type=float, default=0.70, help="Tỷ lệ tập train (mặc định 0.70)")
     parser.add_argument("--val-ratio", type=float, default=0.15, help="Tỷ lệ tập val (mặc định 0.15)")
     parser.add_argument("--test-ratio", type=float, default=0.15, help="Tỷ lệ tập test (mặc định 0.15)")
@@ -190,6 +217,11 @@ def main() -> int:
         "Khi đánh giá mô hình thật, hãy chia theo person/session để tránh rò rỉ dữ liệu."
     )
 
+    yaml_path = args.yaml_path or args.output_dir / "data.yaml"
+    try:
+        class_names = resolve_class_names(yaml_path, args.camera_config)
+    except (ValueError, KeyError, OSError) as error:
+        parser.error(str(error))
     split_dataset(
         images_dir=args.images_dir,
         labels_dir=args.labels_dir,
@@ -202,7 +234,7 @@ def main() -> int:
         create_empty_labels=args.create_empty_labels and not args.no_empty_labels,
     )
 
-    update_data_yaml(args.yaml_path, args.output_dir)
+    update_data_yaml(yaml_path, args.output_dir, class_names)
     return 0
 
 

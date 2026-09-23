@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT = ROOT / "data" / "pen_actions" / "raw_videos"
+DEFAULT_OUTPUT = ROOT / "data" / "earbud_actions" / "raw_videos"
 
 
 def _configure_utf8_console() -> None:
@@ -33,16 +33,15 @@ def main() -> int:
     parser.add_argument("--source", default="0")
     parser.add_argument("--person", required=True, help="Ví dụ: person01")
     parser.add_argument("--session", required=True, help="Ví dụ: session01")
-    parser.add_argument("--project", default="earbud", choices=["pen", "earbud", "custom"], help="Dự án: pen hoặc earbud")
-    parser.add_argument("--scenario", default="correct", help="Kịch bản (vd: correct, wrong_order, missing_earbud, missing_spring...)")
+    parser.add_argument("--project", default="earbud", choices=["earbud", "custom"], help="Dự án earbud; custom yêu cầu --output")
+    parser.add_argument("--scenario", default="correct", help="Kịch bản (vd: correct, wrong_order, missing_earbud, close_one_earbud...)")
     parser.add_argument("--output", type=Path, default=None, help="Thư mục lưu raw_videos (mặc định theo --project)")
     parser.add_argument("--no-mirror", action="store_true")
     args = parser.parse_args()
 
-    output_root = args.output
-    if output_root is None:
-        folder_name = "earbud_actions" if args.project == "earbud" else "pen_actions"
-        output_root = ROOT / "data" / folder_name / "raw_videos"
+    if args.project == "custom" and args.output is None:
+        parser.error("--project custom cần --output để không lưu nhầm vào dữ liệu earbud.")
+    output_root = args.output or DEFAULT_OUTPUT
 
     source = _source(args.source)
     backend = cv2.CAP_DSHOW if isinstance(source, int) and sys.platform == "win32" else cv2.CAP_ANY

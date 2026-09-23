@@ -1,272 +1,138 @@
-# Hybrid Assembly Monitor
+# Earbud Hybrid Assembly Monitor
 
-Khung giám sát quy trình lắp ráp bằng camera, kết hợp:
+Hệ thống giám sát thao tác lắp hai tai nghe vào hộp sạc bằng camera. Bản làm việc duy nhất là `G:\Internship\RBCNN_Demo`.
 
-- **YOLO** để nhận diện và khoanh vùng linh kiện.
-- **ViT + BiLSTM** để nhận diện hành động theo chuỗi thời gian.
-- **Fusion Engine** để đối chiếu hành động với trạng thái vật thể.
-- **FSM** để kiểm tra đúng bước, sai thứ tự và bỏ sót công đoạn.
-
-Project mẫu hiện tại là quy trình hộp tai nghe:
+Quy trình mục tiêu v2:
 
 ```text
-đặt hộp → lắp tai nghe thứ nhất → lắp tai nghe thứ hai → đóng nắp
+mở hộp → lắp tai thứ nhất → lắp tai thứ hai → đóng hộp
 ```
 
-Đây là prototype nghiên cứu, chưa phải thiết bị kiểm định chất lượng sản xuất.
+Đây là prototype nghiên cứu. Camera 2D không xác nhận được tiếp xúc điện hay chất lượng sạc.
 
 ## Kiến trúc
 
 ```mermaid
 flowchart LR
-    Camera[Camera / Video] --> Frames[Frame stream]
-    Frames --> YOLO[YOLO detector]
-    Frames --> ViT[ViT spatial encoder]
-    YOLO --> Objects[Bounding boxes + geometry]
-    ViT --> Embeddings[Frame embeddings]
-    Embeddings --> LSTM[BiLSTM action model]
-    LSTM --> Actions[Action + confidence]
-    Objects --> Fusion[Fusion Engine]
-    Actions --> Fusion
-    Fusion --> Events[Verified events]
-    Events --> FSM[Configurable FSM]
-    FSM --> Result[PASS / VIOLATION / next step]
-    Result --> UI[Realtime overlay + JSONL log]
+    Camera[Camera / video] --> YOLO[YOLO: vật thể + bounding box]
+    Camera --> DINO[DINOv2-Small: embedding từng frame]
+    DINO --> LSTM[BiLSTM: hành động theo thời gian]
+    YOLO --> Fusion[Fusion Engine]
+    LSTM --> Fusion
+    Fusion --> FSM[FSM kiểm tra thứ tự]
+    FSM --> Result[PASS / VIOLATION / bước tiếp theo]
 ```
 
-YOLO trả lời **vật gì đang ở đâu**. ViT–BiLSTM trả lời **người dùng đang làm gì**. Fusion Engine chỉ phát một sự kiện khi bằng chứng hành động và thay đổi vật lý phù hợp; FSM quyết định sự kiện đó có đúng thứ tự hay không.
+- YOLO trả lời vật gì đang ở đâu và số khe còn trống.
+- DINOv2 + BiLSTM nhận diện sáu nhãn hành động: `idle`, `open_case`, `insert_first_earbud`, `insert_second_earbud`, `close_case`, `remove_earbud`.
+- Fusion chỉ chấp nhận bước lắp khi hành động và thay đổi vật lý cùng khớp.
+- FSM quản lý thứ tự, lỗi đóng sớm và việc tai nghe bị lấy ra.
+
+## Hai profile đang được giữ
+
+| Profile | Mục đích | Trạng thái |
+|---|---|---|
+| `configs/projects/earbud.json` | Tái hiện baseline cũ 4 nhãn và detector 6 lớp | Chỉ để đối chiếu |
+| `configs/projects/earbud_v2.json` | Hướng chính: 5 action, DINOv2-Small, hai lần lắp riêng | Đang xây dựng |
+
+Không dùng checkpoint baseline với config v2. Thứ tự lớp và kích thước embedding phải khớp checkpoint.
+
+## Hiện trạng thật
+
+- Có video local trong `data/earbud_actions/raw_videos/`.
+- `data/earbud_actions/annotations_v2.csv` mới chỉ có header: bạn vẫn phải gán nhãn v2.
+- Detector baseline cũ nằm trong `artifacts/training/earbud_merged_detector/`; nó không khớp detector geometry 6 lớp trái/phải.
+- Chưa có `artifacts/training/earbud_geometry_detector/weights/best.pt`.
+- Chưa có `artifacts/action_model_v2/best.pt`.
+- Python hiện tại đang dùng PyTorch CPU; muốn dùng NVIDIA GPU phải cài bản PyTorch CUDA phù hợp.
 
 ## Cài đặt
 
-Yêu cầu Python 3.10 trở lên. Nên dùng virtual environment.
-
 ```powershell
+cd "G:\Internship\RBCNN_Demo"
 python -m venv .venv
-.venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -r requirements-camera.txt
 python -m pip install -r requirements-ml.txt
 python -m pip install -e .
 ```
 
-Hai checkpoint cần có trên máy:
+Kiểm tra GPU:
+
+```powershell
+python -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU')"
+```
+
+## Chạy camera
+
+Liệt kê camera:
+
+```powershell
+python scripts/run_earbud.py --list-cameras
+```
+
+Chạy camera laptop hoặc camera USB:
+
+```powershell
+python scripts/run_earbud.py --mode camera --source 0 --auto-advance
+python scripts/run_earbud.py --mode camera --source 1 --auto-advance
+```
+
+Trong cửa sổ: `C` đổi camera, `S` chụp ảnh có overlay, `R` reset, `Q`/`Esc` thoát. Ảnh chụp được lưu tại `artifacts/screenshots/`.
+
+Runtime sẽ dừng với thông báo rõ nếu checkpoint geometry v2 chưa có. Xem [hướng dẫn camera](docs/CAMERA_REALTIME.md) và [việc bạn cần làm](docs/VIEC_BAN_CAN_LAM.md).
+
+## Pipeline action v2
+
+Làm đúng thứ tự:
 
 ```text
-artifacts/training/earbud_merged_detector/weights/best.pt
-artifacts/action_model/best.pt
+Annotation → split theo video/session → DINOv2 feature → train BiLSTM → evaluation
 ```
 
-Dataset, video và checkpoint không được đưa vào Git vì dung lượng lớn. Xem phần “Dữ liệu và model” bên dưới.
+Toàn bộ lệnh và quy tắc gán sáu nhãn nằm trong [LSTM_Training_Guide.md](docs/LSTM_Training_Guide.md).
 
-## Chạy hệ thống
-
-### Chế độ YOLO + hình học hai tai (không cần LSTM)
-
-Chế độ mới kiểm tra trực tiếp `open_case`, hai box `earbud` nằm trong hộp và số khe `empty_left`/`empty_right` giảm từ 2 → 1 → 0:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/setup_camera.ps1
-
-.\.venv\Scripts\python.exe scripts\run_earbud.py `
-  --mode camera `
-  --source 0 `
-  --auto-advance
-```
-
-Checkpoint cho chế độ này phải được train đúng năm lớp `open_case`, `close_case`, `earbud`, `empty_left`, `empty_right`. Xem [hướng dẫn gán nhãn và chạy thử](docs/VIEC_BAN_CAN_LAM_GEOMETRY.md).
-
-Runtime geometry đã được tối ưu để camera không chờ YOLO: inference chạy trên luồng nền, chỉ giữ frame mới nhất, camera đặt 960×540 với buffer một frame, YOLO dùng ảnh 512 px và tự bật FP16/cuDNN khi có NVIDIA GPU. Overlay hiển thị riêng `Display FPS`, `AI FPS`, `inside=N/2` và `empty=N/2`.
-
-### Chế độ Hybrid YOLO + ViT–BiLSTM
-
-Camera laptop:
-
-```powershell
-python scripts/run_hybrid.py --project configs/projects/earbud.json --source 0
-```
-
-Camera USB thường là `1` hoặc `2`:
-
-```powershell
-python scripts/run_hybrid.py --project configs/projects/earbud.json --source 1
-```
-
-Lệnh tương thích cũ vẫn hoạt động:
-
-```powershell
-python scripts/run_earbud_hybrid.py --source 0
-```
-
-Máy chỉ có CPU:
-
-```powershell
-python scripts/run_hybrid.py `
-  --project configs/projects/earbud.json `
-  --source 0 `
-  --device cpu `
-  --sample-fps 3 `
-  --yolo-every 4
-```
-
-Phím điều khiển:
-
-| Phím | Chức năng |
-|---|---|
-| `R` | Reset FSM, Fusion Engine và temporal buffer |
-| `Q` hoặc `Esc` | Thoát |
-
-## Cấu trúc repository
+## Cấu trúc chính
 
 ```text
 RBCNN_Demo/
-├── configs/
-│   ├── projects/                 # Profile kết nối toàn bộ thành phần của từng dự án
-│   │   └── earbud.json
-│   ├── camera_earbud_config.json # Detector, class, confidence, work zone
-│   ├── action_earbud_config.json # ViT, BiLSTM, action labels
-│   └── earbud_two_step_fsm_config.json
-├── src/assembly/
-│   ├── models/                   # ViT encoder và BiLSTM
-│   ├── project_config.py         # Nạp profile và Fusion Engine động
-│   ├── earbud_fusion.py          # Logic hình học riêng cho tai nghe
-│   ├── fsm.py                    # FSM dùng chung, không gắn với sản phẩm
-│   ├── vision.py                 # Box, containment, overlap
-│   └── monitor.py                # Điều phối kết quả và event log
-├── scripts/
-│   ├── run_hybrid.py             # Runtime dùng chung cho mọi project profile
-│   ├── run_earbud_hybrid.py      # Wrapper tương thích cho project tai nghe
-│   ├── train_detector.py
-│   ├── train_action_model.py
-│   ├── evaluate_action_model.py
-│   └── validate_detection_dataset.py
-├── tests/                        # Unit test cho config, FSM, geometry và model
-├── docs/                         # Thiết kế và hướng dẫn thu thập dữ liệu
-├── datasets/                     # Dữ liệu local, không commit
-├── data/                         # Video/action annotations local
-└── artifacts/                    # Checkpoint, log và kết quả chạy local
+├── configs/              # Profile camera, action model và FSM
+├── data/earbud_actions/  # Video, annotation và feature local
+├── datasets/             # Dataset YOLO local
+├── artifacts/            # Checkpoint, log và ảnh kết quả local
+├── scripts/              # Thu dữ liệu, train, đánh giá và runtime
+├── src/assembly/         # Code dùng lại: detector, model, fusion, FSM
+├── tests/                # Unit/integration test
+└── docs/                 # Hướng dẫn hiện hành
 ```
 
-## Dùng khung này cho dự án khác
+## Dùng cho sản phẩm khác
 
-Ví dụ dự án tiếp theo là lắp PCB. Không sửa trực tiếp cấu hình earbud; tạo bộ file mới:
+Giữ code dùng chung, tạo profile và logic fusion mới thay vì sửa profile earbud:
 
 ```text
-configs/projects/pcb.json
-configs/camera_pcb_config.json
-configs/action_pcb_config.json
-configs/pcb_fsm_config.json
-src/assembly/pcb_fusion.py
+configs/projects/<project>.json
+configs/camera_<project>_config.json
+configs/action_<project>_config.json
+configs/<project>_fsm_config.json
+src/assembly/<project>_fusion.py
 ```
 
-### 1. Detector
-
-Tạo dataset YOLO với các lớp phù hợp, ví dụ `PCB`, `Connector`, `Screw`, `Cable`, `Hand`. Sau đó cập nhật `camera_pcb_config.json` và đường dẫn `best.pt`.
-
-### 2. Action model
-
-Quay video, gán nhãn các hành động như `place_board`, `insert_connector`, `tighten_screw`, rồi tạo `action_pcb_config.json` và train checkpoint mới.
-
-### 3. FSM
-
-Mô tả thứ tự hợp lệ và thông báo vi phạm trong `pcb_fsm_config.json`. `ConfigurableAssemblyTracker` dùng được ngay, không cần sửa code FSM.
-
-### 4. Fusion Engine
-
-Tạo class riêng có ba thành phần sau:
-
-```python
-class PcbFusionEngine:
-    @property
-    def status_text(self) -> str:
-        ...
-
-    def update(self, detections, action_prediction):
-        # Trả về None hoặc object có action, confidence, reason.
-        ...
-
-    def reset(self) -> None:
-        ...
-```
-
-Fusion Engine là nơi viết quy tắc vật lý riêng cho sản phẩm, ví dụ connector phải nằm trong socket hoặc vít phải nằm trong vùng lỗ vít.
-
-### 5. Project profile
-
-Profile nối tất cả thành phần mà không sửa `run_hybrid.py`:
-
-```json
-{
-  "schema_version": 1,
-  "name": "pcb",
-  "display_name": "PCB Assembly Monitor",
-  "camera_config": "configs/camera_pcb_config.json",
-  "fsm_config": "configs/pcb_fsm_config.json",
-  "action_config": "configs/action_pcb_config.json",
-  "action_model": "artifacts/action_model_pcb/best.pt",
-  "event_log": "artifacts/events/pcb.jsonl",
-  "fusion": {
-    "factory": "assembly.pcb_fusion:PcbFusionEngine",
-    "parameters": {
-      "stable_frames": 3,
-      "min_action_confidence": 0.6
-    }
-  }
-}
-```
-
-Chạy dự án mới:
-
-```powershell
-python scripts/run_hybrid.py --project configs/projects/pcb.json --source 0
-```
-
-## Huấn luyện và kiểm tra
-
-Kiểm tra dataset detection:
-
-```powershell
-python scripts/validate_detection_dataset.py --data datasets/earbud_merged/data.yaml
-```
-
-Train YOLO:
-
-```powershell
-python scripts/train_detector.py `
-  --data datasets/earbud_merged/data.yaml `
-  --model yolov8n.pt `
-  --epochs 60
-```
-
-Pipeline action recognition:
-
-```powershell
-python scripts/extract_spatial_features.py
-python scripts/verify_pipeline.py
-python scripts/train_action_model.py
-python scripts/evaluate_action_model.py --split test
-```
-
-Chạy test:
+## Kiểm thử
 
 ```powershell
 python -m unittest discover -s tests -v
 ```
 
-## Dữ liệu và model
-
-Repository chỉ lưu code, config, annotation nhỏ và tài liệu Markdown. Các mục sau được giữ local nhưng bị `.gitignore` loại khỏi Git:
-
-- `datasets/`: ảnh và label YOLO.
-- `data/**/raw_videos/`: video gốc.
-- `data/**/features/`: embedding có thể tạo lại.
-- `artifacts/`: checkpoint, log, ảnh inference và kết quả train.
-- `*.pt`, `*.h5`, `*.zip`, `*.docx`.
-
-Khi chia sẻ model, dùng GitHub Release, Google Drive, Hugging Face Hub hoặc một kho lưu trữ model; không commit trực tiếp checkpoint lớn vào Git thông thường.
+Dataset, video, feature và checkpoint lớn bị loại khỏi Git bởi `.gitignore`; chỉ code, config, annotation nhỏ và tài liệu được push lên GitHub.
 
 ## Tài liệu
 
-- [Việc cần làm](docs/VIEC_BAN_CAN_LAM.md)
-- [Thiết kế Hybrid ViT + LSTM](docs/HYBRID_VIT_LSTM_ASSEMBLY_PLAN.md)
-- [Hướng dẫn train LSTM](docs/LSTM_Training_Guide.md)
-- [Kế hoạch Assembly Tracker mở rộng](docs/plan.md)
+- [Việc bạn cần làm](docs/VIEC_BAN_CAN_LAM.md)
+- [Notebook Kaggle: sửa DATASET_ROOTS rồi Run All](Kaggle_Training_Earbud.ipynb)
+- [Train Earbud Detect COCO trên Kaggle](docs/KAGGLE_TRAIN_EARBUD_COCO.md)
+- [Năm bước train action v2](docs/LSTM_Training_Guide.md)
+- [Chạy camera và thu ảnh YOLO](docs/CAMERA_REALTIME.md)
+- [Thiết kế Hybrid](docs/HYBRID_VIT_LSTM_ASSEMBLY_PLAN.md)
+- [Tóm tắt hợp nhất repo](docs/TOM_TAT_HOP_NHAT_REPO_20260922.md)

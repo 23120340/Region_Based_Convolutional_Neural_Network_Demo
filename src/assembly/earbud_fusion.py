@@ -19,6 +19,8 @@ class EarbudSceneState:
     empty_slots_inside_case: int
     occupancy_estimate: int
     confidence: float
+    wrong_side_earbud_label: str | None = None
+    wrong_side_slot_label: str | None = None
 
 
 @dataclass(frozen=True)
@@ -77,6 +79,9 @@ class EarbudFusionEngine:
         containment_threshold: float = 0.5,
         duplicate_overlap_threshold: float = 0.7,
         min_action_confidence: float = 0.6,
+        case_action: str = "pick_case",
+        require_case_action: bool = False,
+        earbud_slot_pairs: dict[str, str] | None = None,
     ) -> None:
         if required_earbuds < 1:
             raise ValueError("required_earbuds phải >= 1")
@@ -88,11 +93,19 @@ class EarbudFusionEngine:
             raise ValueError("duplicate_overlap_threshold phải nằm trong [0, 1]")
         if not 0.0 <= min_action_confidence <= 1.0:
             raise ValueError("min_action_confidence phải nằm trong [0, 1]")
+        if not case_action.strip():
+            raise ValueError("case_action không được rỗng")
         self.required_earbuds = required_earbuds
         self.stable_frames = stable_frames
         self.containment_threshold = containment_threshold
         self.duplicate_overlap_threshold = duplicate_overlap_threshold
         self.min_action_confidence = min_action_confidence
+        self.case_action = case_action
+        self.require_case_action = require_case_action
+        self.earbud_slot_pairs = {
+            _normalise_label(earbud_label): _normalise_label(slot_label)
+            for earbud_label, slot_label in (earbud_slot_pairs or {}).items()
+        }
         self.reset()
 
     @property
@@ -108,21 +121,27 @@ class EarbudFusionEngine:
         scene = self._last_scene
         if scene is None:
             return "waiting for stable YOLO scene"
-        return (
+        status = (
             f"inside={scene.earbuds_inside_case} "
             f"empty={scene.empty_slots_inside_case} "
             f"confirmed={self.confirmed_insertions}/{self.required_earbuds}"
         )
+        if scene.wrong_side_earbud_label is not None:
+            status += f" WRONG_SIDE={scene.wrong_side_earbud_label}"
+        return status
 
     def reset(self) -> None:
-        self._candidate_signature: tuple[bool, bool, int, int] | None = None
+        self._candidate_signature: tuple[bool, bool, int, int, str | None, str | None] | None = None
         self._candidate_count = 0
         self._last_scene: EarbudSceneState | None = None
         self._case_registered = False
         self._confirmed_insertions = 0
         self._max_empty_slots_seen = 0
-        self._last_insertion_signature: tuple[bool, bool, int, int] | None = None
+        self._last_insertion_signature: (
+            tuple[bool, bool, int, int, str | None, str | None] | None
+        ) = None
         self._close_latched = False
+        self._wrong_side_latched_signature: tuple[bool, bool, int, int, str | None, str | None] | None = None
 
     def _deduplicate(self, detections: Iterable[Detection]) -> list[Detection]:
         kept: list[Detection] = []
@@ -138,13 +157,16 @@ class EarbudFusionEngine:
     def _raw_scene(
         self,
         detections: Iterable[Detection],
-    ) -> tuple[EarbudSceneState, tuple[bool, bool, int, int]]:
+    ) -> tuple[
+        EarbudSceneState,
+        tuple[bool, bool, int, int, str | None, str | None],
+    ]:
         items = tuple(detections)
         cases = [item for item in items if _normalise_label(item.label) in self.CASE_LABELS]
         case = max(cases, key=lambda item: item.confidence) if cases else None
         if case is None:
             scene = EarbudSceneState(False, False, 0, 0, 0, 0.0)
-            return scene, (False, False, 0, 0)
+            return scene, (False, False, 0, 0, None, None)
 
         case_closed = _normalise_label(case.label) in self.CLOSED_CASE_LABELS
         earbuds = self._deduplicate(
@@ -162,6 +184,15 @@ class EarbudFusionEngine:
         confidence_values = [case.confidence]
         confidence_values.extend(item.confidence for item in earbuds)
         confidence_values.extend(item.confidence for item in slots)
+        wrong_side_earbud: Detection | None = None
+        wrong_side_slot: Detection | None = None
+        if len(earbuds) == 1 and len(slots) == 1:
+            earbud = earbuds[0]
+            slot = slots[0]
+            expected_slot = self.earbud_slot_pairs.get(_normalise_label(earbud.label))
+            if expected_slot == _normalise_label(slot.label):
+                wrong_side_earbud = earbud
+                wrong_side_slot = slot
         scene = EarbudSceneState(
             case_present=True,
             case_closed=case_closed,
@@ -169,12 +200,20 @@ class EarbudFusionEngine:
             empty_slots_inside_case=min(len(slots), self.required_earbuds),
             occupancy_estimate=min(len(earbuds), self.required_earbuds),
             confidence=sum(confidence_values) / len(confidence_values),
+            wrong_side_earbud_label=(
+                wrong_side_earbud.label if wrong_side_earbud is not None else None
+            ),
+            wrong_side_slot_label=(
+                wrong_side_slot.label if wrong_side_slot is not None else None
+            ),
         )
         signature = (
             scene.case_present,
             scene.case_closed,
             scene.earbuds_inside_case,
             scene.empty_slots_inside_case,
+            scene.wrong_side_earbud_label,
+            scene.wrong_side_slot_label,
         )
         return scene, signature
 
@@ -195,6 +234,8 @@ class EarbudFusionEngine:
             empty_slots_inside_case=scene.empty_slots_inside_case,
             occupancy_estimate=occupancy,
             confidence=scene.confidence,
+            wrong_side_earbud_label=scene.wrong_side_earbud_label,
+            wrong_side_slot_label=scene.wrong_side_slot_label,
         )
 
     def _action_is(self, prediction: Prediction | None, action: str) -> bool:
@@ -228,14 +269,41 @@ class EarbudFusionEngine:
             self._confirmed_insertions = 0
             self._max_empty_slots_seen = 0
             self._last_insertion_signature = None
+            self._wrong_side_latched_signature = None
             return None
 
         if not self._case_registered:
+            if self.require_case_action and not self._action_is(
+                action_prediction, self.case_action
+            ):
+                return None
             self._case_registered = True
             return EarbudFusionEvent(
-                action="pick_case",
+                action=self.case_action,
+                confidence=(
+                    min(scene.confidence, action_prediction.confidence)
+                    if action_prediction is not None
+                    else scene.confidence
+                ),
+                reason=(
+                    f"YOLO thấy hộp ổn định và ViT-LSTM nhận diện {self.case_action}."
+                    if self.require_case_action
+                    else "Hộp sạc xuất hiện ổn định trong vùng quan sát."
+                ),
+                scene=scene,
+            )
+
+        if scene.wrong_side_earbud_label is None:
+            self._wrong_side_latched_signature = None
+        elif signature != self._wrong_side_latched_signature:
+            self._wrong_side_latched_signature = signature
+            return EarbudFusionEvent(
+                action="wrong_earbud_side",
                 confidence=scene.confidence,
-                reason="Hộp sạc xuất hiện ổn định trong vùng quan sát.",
+                reason=(
+                    f"YOLO thấy {scene.wrong_side_earbud_label} trong hộp nhưng "
+                    f"{scene.wrong_side_slot_label} vẫn trống; tai nghe đang nằm nhầm khe."
+                ),
                 scene=scene,
             )
 
@@ -257,17 +325,35 @@ class EarbudFusionEngine:
                 if self._confirmed_insertions == 1
                 else "remove_earbud_to_zero"
             )
+            action_supports_removal = self._action_is(action_prediction, "remove_earbud")
             return EarbudFusionEvent(
                 action=action,
-                confidence=scene.confidence,
+                confidence=(
+                    min(scene.confidence, action_prediction.confidence)
+                    if action_supports_removal and action_prediction is not None
+                    else scene.confidence
+                ),
                 reason=(
                     f"YOLO xác nhận occupancy giảm từ {previous_insertions} "
-                    f"xuống {self._confirmed_insertions} và khe trống xuất hiện trở lại."
+                    f"xuống {self._confirmed_insertions} và khe trống xuất hiện trở lại"
+                    + (
+                        "; ViT-LSTM đồng thời nhận diện remove_earbud."
+                        if action_supports_removal
+                        else "."
+                    )
                 ),
                 scene=scene,
             )
 
-        if self._action_is(action_prediction, "insert_earbud"):
+        expected_insert_action = (
+            "insert_first_earbud"
+            if self._confirmed_insertions == 0
+            else "insert_second_earbud"
+        )
+        insertion_action_matches = self._action_is(
+            action_prediction, expected_insert_action
+        ) or self._action_is(action_prediction, "insert_earbud")
+        if insertion_action_matches:
             has_new_physical_evidence = scene.occupancy_estimate > self._confirmed_insertions
             new_scene = signature != self._last_insertion_signature
             if has_new_physical_evidence and new_scene:
@@ -282,7 +368,7 @@ class EarbudFusionEngine:
                     ),
                     confidence=min(scene.confidence, action_prediction.confidence),
                     reason=(
-                        f"ViT-LSTM nhận diện insert_earbud và YOLO xác nhận "
+                        f"ViT-LSTM nhận diện {action_prediction.action} và YOLO xác nhận "
                         f"tai nghe {ordinal} đã chiếm khe."
                     ),
                     scene=scene,

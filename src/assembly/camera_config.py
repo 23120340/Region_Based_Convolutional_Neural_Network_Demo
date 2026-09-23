@@ -21,6 +21,7 @@ class EarbudGeometryConfig:
     closed_case_label: str
     earbud_labels: tuple[str, ...]
     empty_slot_labels: tuple[str, ...]
+    earbud_slot_pairs: tuple[tuple[str, str], ...] = ()
     containment_threshold: float = 0.6
 
 
@@ -95,6 +96,13 @@ def load_camera_config(path: str | Path) -> CameraConfig:
         empty_slot_labels = tuple(
             str(item) for item in geometry_raw.get("empty_slot_labels", [])
         )
+        pair_values = geometry_raw.get("earbud_slot_pairs", {})
+        if not isinstance(pair_values, dict):
+            raise ValueError("earbud_slot_pairs phải là object earbud_label -> empty_slot_label")
+        earbud_slot_pairs = tuple(
+            (str(earbud_label), str(slot_label))
+            for earbud_label, slot_label in pair_values.items()
+        )
         referenced = {open_case_label, closed_case_label, *earbud_labels, *empty_slot_labels}
         unknown = referenced - _labels
         if unknown:
@@ -103,6 +111,18 @@ def load_camera_config(path: str | Path) -> CameraConfig:
             raise ValueError("earbud_geometry phải khai báo nhãn hộp mở và hộp đóng")
         if not earbud_labels or len(empty_slot_labels) != 2:
             raise ValueError("earbud_geometry cần nhãn earbud và đúng 2 nhãn khe trống")
+        invalid_pairs = [
+            (earbud_label, slot_label)
+            for earbud_label, slot_label in earbud_slot_pairs
+            if earbud_label not in earbud_labels or slot_label not in empty_slot_labels
+        ]
+        if invalid_pairs:
+            raise ValueError(
+                "earbud_slot_pairs tham chiếu nhãn ngoài earbud_labels/empty_slot_labels: "
+                f"{invalid_pairs}"
+            )
+        if len({slot for _, slot in earbud_slot_pairs}) != len(earbud_slot_pairs):
+            raise ValueError("Mỗi empty slot chỉ được ghép với một earbud label")
         threshold = float(geometry_raw.get("containment_threshold", 0.6))
         if not 0.0 < threshold <= 1.0:
             raise ValueError("containment_threshold phải nằm trong (0, 1]")
@@ -111,6 +131,7 @@ def load_camera_config(path: str | Path) -> CameraConfig:
             closed_case_label=closed_case_label,
             earbud_labels=earbud_labels,
             empty_slot_labels=empty_slot_labels,
+            earbud_slot_pairs=earbud_slot_pairs,
             containment_threshold=threshold,
         )
 

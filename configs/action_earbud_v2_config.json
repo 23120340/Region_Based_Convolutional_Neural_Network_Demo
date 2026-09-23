@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "spatial": {
-    "backbone": "google/vit-base-patch16-224",
-    "embedding_dim": 768,
+    "backbone": "facebook/dinov2-small",
+    "embedding_dim": 384,
     "sample_fps": 10.0,
     "freeze": true
   },
@@ -24,8 +24,10 @@
   },
   "actions": [
     "idle",
-    "pick_case",
-    "insert_earbud",
-    "close_case"
+    "open_case",
+    "insert_first_earbud",
+    "insert_second_earbud",
+    "close_case",
+    "remove_earbud"
   ]
 }

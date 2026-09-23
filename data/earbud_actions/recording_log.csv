@@ -1,4 +1,17 @@
 video_id,person_id,session_id,scenario,path,duration_s
+per1_01_correct_20260917_144650_001,per1,01,correct,data/earbud_actions/raw_videos/per1/01/per1_01_correct_20260917_144650_001.mp4,16.000
+per1_01_correct_20260917_144728_002,per1,01,correct,data/earbud_actions/raw_videos/per1/01/per1_01_correct_20260917_144728_002.mp4,11.733
+per1_01_correct_20260917_144748_003,per1,01,correct,data/earbud_actions/raw_videos/per1/01/per1_01_correct_20260917_144748_003.mp4,8.533
+per1_01_correct_20260917_144759_004,per1,01,correct,data/earbud_actions/raw_videos/per1/01/per1_01_correct_20260917_144759_004.mp4,9.533
+per1_01_correct_20260917_144811_005,per1,01,correct,data/earbud_actions/raw_videos/per1/01/per1_01_correct_20260917_144811_005.mp4,12.000
+per1_01_correct_20260917_144826_006,per1,01,correct,data/earbud_actions/raw_videos/per1/01/per1_01_correct_20260917_144826_006.mp4,3.600
+per1_01_correct_20260917_144845_007,per1,01,correct,data/earbud_actions/raw_videos/per1/01/per1_01_correct_20260917_144845_007.mp4,10.600
+per1_01_correct_20260917_144859_008,per1,01,correct,data/earbud_actions/raw_videos/per1/01/per1_01_correct_20260917_144859_008.mp4,2.400
+per1_01_correct_20260917_144911_009,per1,01,correct,data/earbud_actions/raw_videos/per1/01/per1_01_correct_20260917_144911_009.mp4,8.133
+per1_01_correct_20260917_144928_010,per1,01,correct,data/earbud_actions/raw_videos/per1/01/per1_01_correct_20260917_144928_010.mp4,17.333
+per1_01_correct_20260917_144956_011,per1,01,correct,data/earbud_actions/raw_videos/per1/01/per1_01_correct_20260917_144956_011.mp4,24.267
+per1_01_correct_20260917_145037_012,per1,01,correct,data/earbud_actions/raw_videos/per1/01/per1_01_correct_20260917_145037_012.mp4,13.067
+per1_01_correct_20260917_145053_013,per1,01,correct,data/earbud_actions/raw_videos/per1/01/per1_01_correct_20260917_145053_013.mp4,4.000
 per1_01_correct_20260917_164858_001,per1,01,correct,data/earbud_actions/raw_videos/per1/01/per1_01_correct_20260917_164858_001.mp4,13.700
 per1_01_correct_20260917_164921_002,per1,01,correct,data/earbud_actions/raw_videos/per1/01/per1_01_correct_20260917_164921_002.mp4,13.557
 per1_01_correct_20260917_164936_003,per1,01,correct,data/earbud_actions/raw_videos/per1/01/per1_01_correct_20260917_164936_003.mp4,2.117

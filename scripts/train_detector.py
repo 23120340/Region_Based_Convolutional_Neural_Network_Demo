@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
-DEFAULT_DATA = ROOT / "datasets" / "pen_parts" / "data.yaml"
+DEFAULT_DATA = ROOT / "datasets" / "earbud_geometry" / "data.yaml"
 
 from assembly.detection_dataset import format_detection_report, inspect_detection_dataset
 
@@ -23,11 +23,6 @@ def _configure_utf8_console() -> None:
 
 
 def _infer_run_name(data_path: Path) -> str:
-    path_str = str(data_path).lower()
-    if "earbud" in path_str:
-        return "earbud_detector"
-    if "pen" in path_str:
-        return "pen_parts_detector"
     parent_name = data_path.parent.name
     return f"{parent_name}_detector" if parent_name else "custom_detector"
 
@@ -72,4 +67,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

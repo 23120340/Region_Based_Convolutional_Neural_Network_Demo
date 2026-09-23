@@ -8,7 +8,7 @@ import torch
 
 from ..action_config import load_action_model_config
 from ..model_contract import Prediction
-from .action_net import PenAssemblyActionNet
+from .action_net import AssemblyActionNet
 from .spatial_encoder import ViTSpatialEncoder
 
 
@@ -33,7 +33,7 @@ class ViTLstmActionRecognizer:
         if self.encoder.embedding_dim != self.config.spatial.embedding_dim:
             raise ValueError("embedding_dim của backbone không khớp action_model_config")
         temporal = self.config.temporal
-        self.model = PenAssemblyActionNet(
+        self.model = AssemblyActionNet(
             input_dim=self.config.spatial.embedding_dim,
             hidden_dim=temporal.hidden_dim,
             num_layers=temporal.num_layers,

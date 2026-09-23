@@ -1,196 +1,119 @@
-"""verify_pipeline.py – Kiểm tra nhanh toàn bộ pipeline trước khi train.
-
-Chạy script này sau khi đã có annotations.csv và features/*.npy để xác nhận:
-  1. annotations.csv hợp lệ và có đủ các split
-  2. Tất cả video_id trong annotation đều có file feature .npy tương ứng
-  3. Kích thước feature đúng với config
-  4. Mỗi split có ít nhất 1 mẫu
-  5. Phân phối nhãn trong mỗi split (để phát hiện mất cân bằng nghiêm trọng)
-
-Cách dùng
----------
-  python scripts/verify_pipeline.py
-  python scripts/verify_pipeline.py --config configs/action_earbud_config.json \\
-      --annotations data/earbud_actions/annotations.csv \\
-      --features-dir data/earbud_actions/features
-"""
-
+"""Validate temporal annotations, split boundaries, and cached ViT features."""
 from __future__ import annotations
 
 import argparse
 import csv
 import json
+import math
 import sys
-from collections import Counter
+from collections import Counter, defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
-
-try:
+sys.path.insert(0, str(ROOT / "src"))
+if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
-    sys.stderr.reconfigure(encoding="utf-8")
-except (AttributeError, OSError):
-    pass
 
 from assembly.action_config import load_action_model_config
-from assembly.paths import (
-    DEFAULT_ACTION_ANNOTATIONS,
-    DEFAULT_ACTION_CONFIG,
-    DEFAULT_FEATURE_CACHE,
-)
-
-
-def _read_annotations(path: Path) -> list[dict]:
-    with path.open("r", encoding="utf-8-sig", newline="") as f:
-        return list(csv.DictReader(f))
+from assembly.paths import DEFAULT_ACTION_ANNOTATIONS, DEFAULT_ACTION_CONFIG, DEFAULT_FEATURE_CACHE
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Kiểm tra pipeline trước khi train")
+    parser = argparse.ArgumentParser(description="Kiểm tra annotation, split và feature trước khi train")
     parser.add_argument("--config", type=Path, default=DEFAULT_ACTION_CONFIG)
     parser.add_argument("--annotations", type=Path, default=DEFAULT_ACTION_ANNOTATIONS)
     parser.add_argument("--features-dir", type=Path, default=DEFAULT_FEATURE_CACHE)
+    parser.add_argument("--allow-same-session", action="store_true", help="Pilot: cho phép cùng session, vẫn cấm cùng video ở nhiều split")
     args = parser.parse_args()
-
-    errors: list[str] = []
-    warnings: list[str] = []
-
-    # --- 1. Config ---
-    print("[1/5] Kiểm tra config...")
     try:
         config = load_action_model_config(args.config)
-        print(f"  ✓ Config OK: {len(config.actions)} nhãn = {list(config.actions)}")
-        print(f"  ✓ Backbone: {config.spatial.backbone}, embedding_dim={config.spatial.embedding_dim}")
-    except Exception as e:
-        errors.append(f"Config lỗi: {e}")
-        print(f"  ✗ {e}")
-
-    # --- 2. Annotations file ---
-    print("[2/5] Kiểm tra annotations.csv...")
-    if not args.annotations.exists():
-        errors.append(f"Không tìm thấy {args.annotations}")
-        print(f"  ✗ File không tồn tại: {args.annotations}")
-    else:
-        rows = _read_annotations(args.annotations)
-        if not rows:
-            errors.append("annotations.csv rỗng")
-        else:
-            print(f"  ✓ Tổng cộng {len(rows)} dòng annotation")
-            split_counts = Counter(row["split"] for row in rows)
-            print(f"  ✓ Phân chia: {dict(split_counts)}")
-            if "train" not in split_counts:
-                errors.append("Không có dòng nào có split='train'")
-            if "val" not in split_counts:
-                warnings.append("Không có split='val' — sẽ không thể theo dõi overfitting khi train")
-
-            # Kiểm tra action_name hợp lệ
-            unknown_actions = set()
-            for row in rows:
-                if "actions" in dir(config) and row["action_name"] not in config.actions:
-                    unknown_actions.add(row["action_name"])
-            if unknown_actions:
-                errors.append(f"action_name không có trong config: {unknown_actions}")
-            else:
-                print(f"  ✓ Tất cả action_name hợp lệ")
-
-    # --- 3. Feature files ---
-    print("[3/5] Kiểm tra feature files...")
-    if not args.features_dir.exists():
-        errors.append(f"Thư mục features không tồn tại: {args.features_dir}")
-        print(f"  ✗ Chưa chạy extract_spatial_features.py")
-    else:
-        npy_files = list(args.features_dir.glob("*.npy"))
-        print(f"  Tìm thấy {len(npy_files)} file .npy trong {args.features_dir}")
-
-        if rows:
-            video_ids = {row["video_id"] for row in rows}
-            missing = []
-            for vid in sorted(video_ids):
-                npy_path = args.features_dir / f"{vid}.npy"
-                json_path = args.features_dir / f"{vid}.json"
-                if not npy_path.exists():
-                    missing.append(f"{vid}.npy")
-                elif not json_path.exists():
-                    missing.append(f"{vid}.json (metadata)")
-                else:
-                    try:
-                        import numpy as np
-                        arr = np.load(npy_path)
-                        meta = json.loads(json_path.read_text(encoding="utf-8"))
-                        expected_dim = config.spatial.embedding_dim
-                        if arr.ndim != 2:
-                            errors.append(f"{vid}.npy có ndim={arr.ndim}, phải là 2")
-                        elif arr.shape[1] != expected_dim:
-                            errors.append(f"{vid}.npy dim={arr.shape[1]}, config yêu cầu {expected_dim}")
-                        else:
-                            print(f"  ✓ {vid}: shape={arr.shape}, fps={meta.get('sample_fps')}")
-                    except Exception as e:
-                        errors.append(f"Lỗi đọc {vid}.npy: {e}")
+        with args.annotations.open(encoding="utf-8-sig", newline="") as file:
+            reader = csv.DictReader(file)
+            required = {"video_id", "person_id", "session_id", "split", "start_time_s", "end_time_s", "action_name"}
+            missing = required - set(reader.fieldnames or ())
             if missing:
-                errors.append(f"Thiếu feature cho các video_id: {missing}")
-                print(f"  ✗ Thiếu: {missing}")
+                raise ValueError(f"Annotation thiếu cột: {sorted(missing)}")
+            rows = list(reader)
+        if not rows:
+            raise ValueError("Annotation rỗng")
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        print(f"ERROR: {error}")
+        return 1
 
-    # --- 4. Window coverage ---
-    print("[4/5] Kiểm tra độ phủ temporal window...")
-    if rows and not errors:
+    print(f"Config: {config.spatial.backbone} | labels={list(config.actions)}")
+    errors = []
+    intervals = defaultdict(list)
+    for index, row in enumerate(rows, start=2):
+        if any(not row.get(key, "").strip() for key in required):
+            errors.append(f"Dòng {index}: thiếu giá trị bắt buộc")
+            continue
+        if row["action_name"] not in config.actions:
+            errors.append(f"Dòng {index}: nhãn không thuộc config: {row['action_name']}")
+        if row["split"] not in {"train", "val", "test"}:
+            errors.append(f"Dòng {index}: split không hợp lệ: {row['split']}")
         try:
-            import numpy as np
-            seq_len = config.temporal.sequence_length
-            sample_fps = config.spatial.sample_fps
-            total_windows = 0
-            for row in rows:
-                npy_path = args.features_dir / f"{row['video_id']}.npy"
-                if not npy_path.exists():
-                    continue
-                meta_path = args.features_dir / f"{row['video_id']}.json"
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                fps = float(meta.get("sample_fps", sample_fps))
-                start_f = int(float(row["start_time_s"]) * fps)
-                end_f = int(float(row["end_time_s"]) * fps)
-                n_frames = max(0, end_f - start_f)
-                n_windows = max(1, n_frames - seq_len + 1)
-                total_windows += n_windows
-            print(f"  ✓ Ước tính tổng training windows: ~{total_windows} (sequence_length={seq_len})")
-            if total_windows < 50:
-                warnings.append(f"Chỉ có ~{total_windows} windows — rất ít, dễ overfit. Cân nhắc augmentation.")
-        except Exception as e:
-            warnings.append(f"Không thể tính window coverage: {e}")
+            start, end = float(row["start_time_s"]), float(row["end_time_s"])
+            if not (math.isfinite(start) and math.isfinite(end) and 0 <= start < end):
+                raise ValueError()
+            intervals[row["video_id"]].append((start, end))
+        except ValueError:
+            errors.append(f"Dòng {index}: cần 0 <= start_time_s < end_time_s hữu hạn")
+    for video_id, segments in intervals.items():
+        segments.sort()
+        if any(right[0] < left[1] for left, right in zip(segments, segments[1:])):
+            errors.append(f"{video_id}: các đoạn trùng/chồng thời gian")
 
-    # --- 5. Label distribution ---
-    print("[5/5] Phân phối nhãn theo split...")
-    if rows:
-        for split_name in ("train", "val", "test"):
-            split_rows = [r for r in rows if r["split"] == split_name]
-            if not split_rows:
+    for split in ("train", "val", "test"):
+        counts = Counter(row["action_name"] for row in rows if row["split"] == split)
+        print(f"{split}: {dict(counts)}")
+        missing = set(config.actions) - set(counts)
+        if missing:
+            errors.append(f"Split {split!r} thiếu nhãn: {sorted(missing)}")
+
+    try:
+        import numpy as np
+        for video_id in sorted(intervals):
+            metadata = json.loads((args.features_dir / f"{video_id}.json").read_text(encoding="utf-8"))
+            array = np.load(args.features_dir / f"{video_id}.npy", allow_pickle=False)
+            expected_shape = (int(metadata["feature_frames"]), config.spatial.embedding_dim)
+            if array.shape != expected_shape or len(array) == 0 or not np.isfinite(array).all():
+                errors.append(f"{video_id}: feature phải có shape {expected_shape}, hữu hạn và không rỗng")
+            if metadata.get("backbone") != config.spatial.backbone:
+                errors.append(f"{video_id}: backbone cache không khớp config; trích xuất lại")
+            source_fps = float(metadata["source_fps"])
+            sample_fps = float(metadata["sample_fps"])
+            if not (source_fps > 0 and sample_fps > 0 and math.isfinite(source_fps) and math.isfinite(sample_fps)):
+                errors.append(f"{video_id}: FPS metadata không hợp lệ")
                 continue
-            counts = Counter(r["action_name"] for r in split_rows)
-            print(f"  {split_name}: {dict(counts)}")
-            if len(counts) < 2:
-                warnings.append(f"Split '{split_name}' chỉ có 1 nhãn — không thể phân loại")
-
-    # --- Kết quả ---
-    print("\n" + "=" * 60)
-    if errors:
-        print(f"  ✗ {len(errors)} LỖI cần sửa trước khi train:")
-        for e in errors:
-            print(f"    • {e}")
-    else:
-        print("  ✓ Không có lỗi nghiêm trọng!")
-
-    if warnings:
-        print(f"\n  ⚠  {len(warnings)} cảnh báo:")
-        for w in warnings:
-            print(f"    • {w}")
+            if not math.isclose(sample_fps, min(config.spatial.sample_fps, source_fps), abs_tol=1e-6):
+                errors.append(f"{video_id}: sample_fps không khớp config")
+            duration = int(metadata["source_frames"]) / source_fps
+            if any(end > duration + 0.001 for _, end in intervals[video_id]):
+                errors.append(f"{video_id}: annotation vượt thời lượng video")
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        errors.append(f"Lỗi cache: {error}")
 
     if not errors:
-        print("\n  Bước tiếp theo:")
-        print("    python scripts/train_action_model.py")
+        from assembly.action_dataset import CachedActionWindowDataset
+        try:
+            for split in ("train", "val", "test"):
+                dataset = CachedActionWindowDataset(
+                    args.features_dir, args.annotations, split, config.action_to_id,
+                    config.temporal.sequence_length, config.temporal.window_stride,
+                    config.spatial.embedding_dim, allow_same_session=args.allow_same_session,
+                )
+                print(f"{split}: {len(dataset)} temporal windows")
+        except (ValueError, OSError, KeyError) as error:
+            errors.append(str(error))
 
-    print("=" * 60)
-    return 1 if errors else 0
+    for error in errors:
+        print(f"ERROR: {error}")
+    if errors:
+        return 1
+    if args.allow_same_session:
+        print("PILOT: các split có thể cùng session; cần session mới để đánh giá tổng quát.")
+    print("OK: annotation, feature và split hợp lệ.")
+    return 0
 
 
 if __name__ == "__main__":
