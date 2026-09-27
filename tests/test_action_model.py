@@ -24,6 +24,9 @@ class ActionModelTests(unittest.TestCase):
         v2 = load_action_model_config(ROOT / "configs" / "action_earbud_v2_config.json")
         self.assertEqual(v2.spatial.backbone, "facebook/dinov2-small")
         self.assertEqual(v2.spatial.embedding_dim, 384)
+        self.assertEqual(v2.inference.min_confidence, 0.5)
+        self.assertFalse(v2.accepts_confidence(0.5))
+        self.assertTrue(v2.accepts_confidence(0.5001))
         self.assertEqual(
             v2.actions,
             (
@@ -32,7 +35,6 @@ class ActionModelTests(unittest.TestCase):
                 "insert_first_earbud",
                 "insert_second_earbud",
                 "close_case",
-                "remove_earbud",
             ),
         )
 

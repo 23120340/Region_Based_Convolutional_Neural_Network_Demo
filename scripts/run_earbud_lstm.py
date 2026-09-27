@@ -31,6 +31,7 @@ import torch
 from assembly.action_config import load_action_model_config
 from assembly.config import load_config
 from assembly.fsm import ConfigurableAssemblyTracker, FsmOutcome
+from assembly.model_contract import Prediction
 from assembly.models.vit_lstm_recognizer import ViTLstmActionRecognizer
 from assembly.monitor import AssemblyMonitor, JsonlEventLogger
 from assembly.paths import (
@@ -41,6 +42,7 @@ from assembly.paths import (
 from assembly.smoother import TemporalDebouncer
 
 DEFAULT_LSTM_MODEL = ROOT / "artifacts" / "action_model" / "best.pt"
+WINDOW_TITLE = "Earbud Assembly - Real-time Action LSTM"
 
 
 def _configure_utf8_console() -> None:
@@ -80,12 +82,36 @@ def main() -> int:
         action="store_true",
         help="Cho phép tải backbone từ Hugging Face nếu máy chưa có cache",
     )
+    parser.add_argument(
+        "--no-mirror",
+        action="store_true",
+        help="Không lật ngang hình từ camera",
+    )
+    parser.add_argument(
+        "--window-width",
+        type=int,
+        default=1280,
+        help="Chiều rộng cửa sổ hiển thị (mặc định: 1280)",
+    )
+    parser.add_argument(
+        "--window-height",
+        type=int,
+        default=720,
+        help="Chiều cao cửa sổ hiển thị (mặc định: 720)",
+    )
+    parser.add_argument(
+        "--fullscreen",
+        action="store_true",
+        help="Mở giao diện toàn màn hình; nhấn F để bật/tắt khi đang chạy",
+    )
     args = parser.parse_args()
 
     if args.sample_fps is not None and args.sample_fps <= 0:
         parser.error("--sample-fps phải lớn hơn 0")
     if args.inference_stride < 1:
         parser.error("--inference-stride phải lớn hơn 0")
+    if args.window_width < 320 or args.window_height < 240:
+        parser.error("Kích thước cửa sổ tối thiểu là 320x240")
 
     if not args.model.exists():
         print(f"[ERR] Không tìm thấy model: {args.model}")
@@ -93,18 +119,18 @@ def main() -> int:
         return 1
 
     print(f"[INFO] Tải cấu hình và khởi tạo FSM...")
+    action_config = load_action_model_config(args.action_config)
     assembly_config = load_config(args.fsm_config)
     tracker = ConfigurableAssemblyTracker(assembly_config)
     debouncer = TemporalDebouncer(
         window_size=3,
         min_votes=2,
-        min_confidence=0.50,
+        min_confidence=action_config.inference.min_confidence,
         idle_actions=assembly_config.idle_actions
     )
     monitor = AssemblyMonitor(tracker, debouncer, JsonlEventLogger(DEFAULT_EVENT_LOG))
 
     print(f"[INFO] Khởi tạo mô hình ViT + LSTM từ {args.model.name}...")
-    action_config = load_action_model_config(args.action_config)
     recognizer = ViTLstmActionRecognizer(
         config_path=args.action_config,
         checkpoint_path=args.model,
@@ -116,6 +142,10 @@ def main() -> int:
     sample_fps = args.sample_fps or action_config.spatial.sample_fps
     sample_interval = 1.0 / sample_fps
     print(f"[INFO] Device: {recognizer.device} | sample_fps={sample_fps:g} | sequence={seq_len}")
+    print(
+        "[INFO] Chỉ nhận hành động khi confidence > "
+        f"{action_config.inference.min_confidence:.2f}"
+    )
     if recognizer.device.type == "cpu" and sample_fps > 5:
         print(
             "[WARN] ViT-Base đang chạy bằng CPU. Nếu hình vẫn chậm, dùng --sample-fps 4; "
@@ -134,7 +164,19 @@ def main() -> int:
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
-    print(f"[INFO] Đang chạy nhận diện. Nhấn 'Q' hoặc 'ESC' để thoát.")
+    cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL | cv2.WINDOW_KEEPRATIO)
+    fullscreen = args.fullscreen
+    if fullscreen:
+        cv2.setWindowProperty(WINDOW_TITLE, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    else:
+        cv2.resizeWindow(WINDOW_TITLE, args.window_width, args.window_height)
+
+    mirror_enabled = isinstance(source, int) and not args.no_mirror
+    print(
+        "[INFO] Đang chạy nhận diện. "
+        f"Mirror={'ON' if mirror_enabled else 'OFF'} | "
+        "F: toàn màn hình | Q/ESC: thoát."
+    )
 
     # Chỉ encode frame mới một lần. Code cũ encode lại toàn bộ 16 frame sau
     # mỗi lần lấy mẫu, khiến ViT phải làm việc nặng hơn khoảng 16 lần.
@@ -142,6 +184,7 @@ def main() -> int:
     next_sample_time = time.perf_counter()
     last_infer_time_ms = 0.0
     current_prediction = None
+    raw_prediction = None
     outcome: FsmOutcome | None = None
     total_samples = 0
 
@@ -153,8 +196,8 @@ def main() -> int:
                 break
             continue
 
-        if isinstance(source, int):
-            frame = cv2.flip(frame, 1) # Lật gương camera
+        if mirror_enabled:
+            frame = cv2.flip(frame, 1) # Chỉ lật camera khi người dùng không đặt --no-mirror
 
         height, width = frame.shape[:2]
         now = time.perf_counter()
@@ -174,8 +217,13 @@ def main() -> int:
             )
             if ready_for_lstm:
                 pred = recognizer.predict_embeddings(list(embedding_buffer))
-                current_prediction = pred
-                new_outcome = monitor.submit_prediction(pred)
+                raw_prediction = pred
+                current_prediction = (
+                    pred
+                    if action_config.accepts_confidence(pred.confidence)
+                    else Prediction("uncertain", pred.confidence)
+                )
+                new_outcome = monitor.submit_prediction(current_prediction)
                 if new_outcome is not None:
                     outcome = new_outcome
                     print(f"[{outcome.type}] {outcome.action}: {outcome.message}")
@@ -185,6 +233,7 @@ def main() -> int:
                         embedding_buffer.clear()
                         total_samples = 0
                         current_prediction = None
+                        raw_prediction = None
             last_infer_time_ms = (time.perf_counter() - start_infer) * 1000
 
         # ----- Vẽ Giao Diện Lên Video -----
@@ -198,8 +247,16 @@ def main() -> int:
 
         # Trạng thái Model
         if current_prediction:
-            pred_text = f"Action: {current_prediction.action} ({current_prediction.confidence:.2f})"
-            _put_text(frame, pred_text, (width - 400, 32), 0.65, (100, 255, 100))
+            if current_prediction.action == "uncertain" and raw_prediction is not None:
+                pred_text = (
+                    f"Action: uncertain | raw={raw_prediction.action} "
+                    f"{raw_prediction.confidence:.2f}"
+                )
+                pred_color = (0, 210, 255)
+            else:
+                pred_text = f"Action: {current_prediction.action} ({current_prediction.confidence:.2f})"
+                pred_color = (100, 255, 100)
+            _put_text(frame, pred_text, (max(18, width - 520), 32), 0.65, pred_color)
 
         # Hiển thị thông báo Outcome của hệ thống
         if outcome is not None:
@@ -210,7 +267,7 @@ def main() -> int:
 
         # Thông tin kỹ thuật
         buffer_status = f"Emb: {len(embedding_buffer)}/{seq_len}"
-        _put_text(frame, f"Keys: R (Reset), Q/ESC (Quit) | Infer: {last_infer_time_ms:.0f}ms | {buffer_status}", (18, 92), 0.48, (170, 180, 190))
+        _put_text(frame, f"Keys: R (Reset), F (Fullscreen), Q/ESC (Quit) | Infer: {last_infer_time_ms:.0f}ms | {buffer_status}", (18, 92), 0.48, (170, 180, 190))
 
         # Khung viền chỉ báo FSM state (Xanh nếu PASS, đỏ nếu ERROR, vàng nếu đang tiến hành)
         if outcome and outcome.type == "ERROR":
@@ -218,7 +275,7 @@ def main() -> int:
         elif outcome and outcome.type == "PASS":
             cv2.rectangle(frame, (0, 0), (width - 1, height - 1), (0, 255, 0), 4)
 
-        cv2.imshow("Earbud Assembly - Real-time Action LSTM", frame)
+        cv2.imshow(WINDOW_TITLE, frame)
 
         key = cv2.waitKey(1) & 0xFF
         if key in (ord('q'), 27):
@@ -228,7 +285,15 @@ def main() -> int:
             embedding_buffer.clear()
             total_samples = 0
             current_prediction = None
+            raw_prediction = None
             print("Đã reset trạng thái hệ thống.")
+        elif key == ord('f'):
+            fullscreen = not fullscreen
+            if fullscreen:
+                cv2.setWindowProperty(WINDOW_TITLE, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+            else:
+                cv2.setWindowProperty(WINDOW_TITLE, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_NORMAL)
+                cv2.resizeWindow(WINDOW_TITLE, args.window_width, args.window_height)
 
     cap.release()
     cv2.destroyAllWindows()

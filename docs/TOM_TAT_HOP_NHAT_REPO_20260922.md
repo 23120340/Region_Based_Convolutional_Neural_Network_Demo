@@ -1,5 +1,17 @@
 # Tóm tắt hợp nhất repository — 22/09/2026
 
+## Bổ sung 27/09/2026 — kiểm tra bbox từng khe và giao diện hybrid
+
+- Thêm `PairedEarbudFusionEngine`: ghi nhớ vùng khe theo hộp; đối chiếu tai trái/phải với khe tương ứng; xác nhận khi độ phủ >= 40%, ổn định 3 lần YOLO và LSTM đúng bước có confidence > 0,5.
+- Chỉ mất detection không được tính thành lắp/tháo. Tai và khe trống cùng được detect ở cùng vị trí không tạo vòng lặp insertion/removal.
+- Tháo tai đã xác nhận tạo VIOLATION, lùi FSM, yêu cầu lắp lại đúng bên; xử lý cả tháo sau khi đã đóng hộp hoàn tất.
+- Profile hybrid trỏ đúng config/checkpoint pilot 5 lớp; kiểm tra tên lớp YOLO trước khi mở camera.
+- Giao diện 1440×900 có tiếng Việt, tiến độ từng khe, trạng thái quy trình, yêu cầu sửa lỗi; F toàn màn hình, R reset. Launcher không mirror mặc định.
+- Replay video lấy mẫu theo thời gian video; thêm `--headless` để chạy kiểm tra không mở cửa sổ.
+- Hướng dẫn và việc người dùng cần thử: `docs/HYBRID_SLOT_CHECK_20260927.md` và phần đầu `docs/VIEC_BAN_CAN_LAM.md`.
+- Kiểm tra hoàn tất ngày 28/09: 107 unit/integration tests đạt. Test pipeline sáu lớp dùng fixture riêng; test config hiện tại khớp năm lớp mà người dùng đang dùng, không đổi taxonomy hiện có.
+- Đã chạy 100 frame video bằng checkpoint YOLO + DINOv2/BiLSTM thật ở chế độ headless (CPU, cache local). Đây là smoke test chạy chung; chưa đo độ chính xác hành động trên camera thực tế.
+
 ## Bản chính
 
 Repository duy nhất tiếp tục sử dụng:
@@ -102,6 +114,14 @@ File `docs/Dự án nhận diện hộp tai nghe_RNN.docx` khoảng 45,9 MB đư
 - Đã thử prepare trực tiếp trên dataset `10-30-Auto Label.coco`: 186 ảnh, 975 box, không có box lỗi; ba test chuyển đổi COCO đều đạt.
 - Viết lại `Kaggle_Training_Earbud.ipynb` thành notebook COCO tự chứa: người dùng chỉ sửa `DATASET_ROOT` rồi Run All; xóa `scripts/kaggle_finetune_cells.py` cũ vì trùng chức năng và chỉ chứa các đoạn code dạng chuỗi.
 
+## Bổ sung ngày 23/09/2026 — dataset RNN trái/phải
+
+- Kiểm tra `RNN` và `RNN/LR_Earbud`; xác nhận 190/190 ảnh của bộ LR đã có trong `RNN/train`, không ghép trùng lần hai.
+- Thêm `scripts/merge_rnn_earbud_datasets.py` để chuẩn hóa bảy class, đổi polygon thành bbox, khử trùng SHA-256 và dùng hardlink tiết kiệm dung lượng.
+- Tạo `datasets/earbud_rnn_merged`: 544 ảnh, 1.059 box, không có label lỗi và `Trainable: YES`.
+- Chuẩn hóa class thành `open_case`, `close_case`, `left_earbud`, `right_earbud`, `empty_left`, `empty_right`, `hand`, khớp runtime trái/phải hiện tại.
+- Thêm đánh giá tại `docs/DANH_GIA_DATASET_RNN.md`; thêm `/RNN/` vào `.gitignore` để không đẩy hơn 800 MB dữ liệu thô lên GitHub.
+
 ## Bổ sung kiểm tra tháo tai nghe
 
 - Xác nhận runtime đã phát `remove_earbud_to_one` khi occupancy giảm từ 2 xuống 1 và `remove_earbud_to_zero` khi giảm về 0.
@@ -114,3 +134,13 @@ File `docs/Dự án nhận diện hộp tai nghe_RNN.docx` khoảng 45,9 MB đư
 - Detector geometry dùng `left_earbud`, `right_earbud`, `empty_left`, `empty_right` thay cho `earbud` chung.
 - Fusion/FSM phát `wrong_earbud_side` khi tai trái/phải nằm nhầm khe; action này là luật hệ thống, không phải nhãn cần train cho LSTM.
 - YOLO geometry vẫn là điều kiện bắt buộc cho removal; dự đoán `remove_earbud` từ BiLSTM chỉ là bằng chứng hỗ trợ.
+
+## Bổ sung ngày 23/09/2026 — train/test BiLSTM pilot
+
+- Tạo `configs/action_earbud_pilot_config.json` gồm năm lớp đã có dữ liệu; chưa dùng `remove_earbud` vì annotation hiện có 0 mẫu.
+- Chia 35 video thành 25 train, 5 validation và 5 test tại `data/earbud_actions/annotations_v2_pilot_split.csv`.
+- Trích xuất DINOv2-Small feature 384 chiều cho đủ 35 video vào `data/earbud_actions/features_v2_pilot`.
+- Train BiLSTM 15 epoch; checkpoint tốt nhất tại epoch 4 có validation macro-F1 0,9644.
+- Test đạt accuracy 92,98% và macro-F1 0,9040 trên 57 temporal window; lỗi chính là `open_case` bị nhầm sang `insert_first_earbud`.
+- Lưu checkpoint và báo cáo trong `artifacts/action_model_pilot`; ghi kết quả chi tiết tại `docs/KET_QUA_TRAIN_LSTM_PILOT_20260923.md`.
+- Đây là pilot cùng người/session, chưa phải phép đánh giá tổng quát. Bản production vẫn cần dữ liệu `remove_earbud` và một session test độc lập.

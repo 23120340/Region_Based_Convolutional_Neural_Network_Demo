@@ -131,7 +131,9 @@ Dataset, video, feature và checkpoint lớn bị loại khỏi Git bởi `.giti
 
 - [Việc bạn cần làm](docs/VIEC_BAN_CAN_LAM.md)
 - [Notebook Kaggle: sửa DATASET_ROOTS rồi Run All](Kaggle_Training_Earbud.ipynb)
+- [Notebook Kaggle cho detector trái/phải](Kaggle_Training_Earbud_LR.ipynb)
 - [Train Earbud Detect COCO trên Kaggle](docs/KAGGLE_TRAIN_EARBUD_COCO.md)
+- [Đánh giá và train dataset RNN trái/phải](docs/DANH_GIA_DATASET_RNN.md)
 - [Năm bước train action v2](docs/LSTM_Training_Guide.md)
 - [Chạy camera và thu ảnh YOLO](docs/CAMERA_REALTIME.md)
 - [Thiết kế Hybrid](docs/HYBRID_VIT_LSTM_ASSEMBLY_PLAN.md)

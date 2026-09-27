@@ -28,6 +28,12 @@ class ActionPipelineV2Tests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             config = json.loads((ROOT / "configs/action_earbud_v2_config.json").read_text(encoding="utf-8"))
+            # The installed pilot has five classes. Exercise the future six-class
+            # training contract with an explicit fixture, independent of runtime.
+            config["actions"] = [
+                "idle", "open_case", "insert_first_earbud",
+                "insert_second_earbud", "close_case", "remove_earbud",
+            ]
             config["temporal"].update(hidden_dim=4, num_layers=1, head_dim=4, dropout=0.0)
             config["training"].update(epochs=1, batch_size=32)
             config_path = root / "config.json"

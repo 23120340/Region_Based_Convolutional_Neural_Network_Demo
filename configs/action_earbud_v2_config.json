@@ -22,12 +22,14 @@
     "weight_decay": 0.0001,
     "seed": 42
   },
+  "inference": {
+    "min_confidence": 0.5
+  },
   "actions": [
     "idle",
     "open_case",
     "insert_first_earbud",
     "insert_second_earbud",
-    "close_case",
-    "remove_earbud"
+    "close_case"
   ]
 }

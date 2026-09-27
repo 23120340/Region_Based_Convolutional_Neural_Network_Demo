@@ -1,8 +1,8 @@
 {
   "schema_version": 1,
   "spatial": {
-    "backbone": "google/vit-base-patch16-224",
-    "embedding_dim": 768,
+    "backbone": "facebook/dinov2-small",
+    "embedding_dim": 384,
     "sample_fps": 10.0,
     "freeze": true
   },
@@ -17,18 +17,19 @@
   },
   "training": {
     "batch_size": 16,
-    "epochs": 30,
+    "epochs": 15,
     "learning_rate": 0.001,
     "weight_decay": 0.0001,
     "seed": 42
   },
   "inference": {
-    "min_confidence": 0.5
+    "min_confidence": 0.4
   },
   "actions": [
     "idle",
-    "pick_case",
-    "insert_earbud",
+    "open_case",
+    "insert_first_earbud",
+    "insert_second_earbud",
     "close_case"
   ]
 }

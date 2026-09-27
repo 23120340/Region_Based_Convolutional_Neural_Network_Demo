@@ -1,5 +1,15 @@
 # Việc bạn cần làm tiếp theo
 
+## Cập nhật 27/09/2026: thử kiểm tra lắp/tháo theo từng khe
+
+- Đã có checkpoint YOLO sáu lớp và BiLSTM pilot năm lớp trên máy. Các mục lịch sử phía dưới có thể mô tả trạng thái cũ.
+- Chạy `.\run_hybrid.ps1 -Source 0 -Fullscreen` trong `G:\Internship\RBCNN_Demo`.
+- Đọc các bước ở [HYBRID_SLOT_CHECK_20260927.md](HYBRID_SLOT_CHECK_20260927.md).
+- Việc bạn cần thử: lắp phải trước/trái trước; đặt sai bên; lấy một/cả hai tai ra; đóng nắp khi thiếu tai; lắp lại sau lỗi; tay che và giữ tai lơ lửng trên khe.
+- Đầu lượt phải cho thấy hai khe trống để hệ thống ghi nhớ vị trí. Nhấn R nếu đổi hộp/xoay mạnh.
+- Sau khi tháo, đợi dòng yêu cầu “lắp lại tai trái/phải”; chỉ đóng nắp sau khi số tai đã xác nhận trở lại 2/2.
+- Ghi lại tình huống báo sai và bổ sung ảnh/clip tương ứng để fine-tune. Chưa coi test mô phỏng là bằng chứng chính xác trên camera.
+
 Cập nhật: 22/09/2026. Bản chính: `G:\Internship\RBCNN_Demo`.
 
 ## Phần tôi đã chuẩn bị
@@ -179,6 +189,21 @@ python scripts/run_hybrid.py `
 ```
 
 ## D. Dữ liệu nên quay thêm
+
+Dataset `RNN/LR_Earbud` đã được kiểm tra: 190/190 ảnh đã có sẵn trong
+`RNN/train`, nên không được ghép lặp. Bản sạch dùng để train nằm tại
+`datasets/earbud_rnn_merged` và đã đạt `Trainable: YES`. Xem
+[DANH_GIA_DATASET_RNN.md](DANH_GIA_DATASET_RNN.md).
+
+Để train detector trái/phải, upload `earbud_rnn_merged`, import
+`Kaggle_Training_Earbud_LR.ipynb`, sửa `DATASET_ROOT` rồi Run All.
+
+Phần detection cần bổ sung:
+
+- Ảnh từ phiên quay độc lập, không phải frame liền nhau của video hiện tại.
+- Thêm nhiều kiểu tai nghe nếu mục tiêu là nhận diện tổng quát.
+- Thêm `other_earbud` nếu hệ thống phải từ chối tai nghe không thuộc đúng bộ.
+- Tăng mạnh `empty_left` và `empty_right`; hiện toàn dataset chỉ có 32 và 25 box.
 
 - Ít nhất 3 person/session độc lập; toàn bộ group chỉ thuộc một split.
 - Mỗi group: 15–20 chu trình đúng.

@@ -34,15 +34,26 @@ class TrainingConfig:
 
 
 @dataclass(frozen=True)
+class InferenceConfig:
+    min_confidence: float = 0.5
+
+
+@dataclass(frozen=True)
 class ActionModelConfig:
     spatial: SpatialConfig
     temporal: TemporalConfig
     training: TrainingConfig
     actions: tuple[str, ...]
+    inference: InferenceConfig
 
     @property
     def action_to_id(self) -> dict[str, int]:
         return {action: index for index, action in enumerate(self.actions)}
+
+    def accepts_confidence(self, confidence: float) -> bool:
+        """The runtime accepts only predictions strictly above the configured threshold."""
+
+        return confidence > self.inference.min_confidence
 
 
 def load_action_model_config(path: str | Path) -> ActionModelConfig:
@@ -55,6 +66,7 @@ def load_action_model_config(path: str | Path) -> ActionModelConfig:
     temporal = TemporalConfig(**raw["temporal"])
     training = TrainingConfig(**raw["training"])
     actions = tuple(str(action) for action in raw["actions"])
+    inference = InferenceConfig(**raw.get("inference", {}))
 
     if spatial.embedding_dim < 1:
         raise ValueError("embedding_dim phải > 0")
@@ -68,5 +80,7 @@ def load_action_model_config(path: str | Path) -> ActionModelConfig:
         raise ValueError("dropout phải nằm trong [0, 1)")
     if len(actions) < 2 or len(set(actions)) != len(actions):
         raise ValueError("actions phải có ít nhất hai nhãn và không được trùng")
+    if not 0.0 <= inference.min_confidence <= 1.0:
+        raise ValueError("inference.min_confidence phải nằm trong [0, 1]")
 
-    return ActionModelConfig(spatial, temporal, training, actions)
+    return ActionModelConfig(spatial, temporal, training, actions, inference)

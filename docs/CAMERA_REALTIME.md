@@ -86,7 +86,46 @@ Phím điều khiển:
 
 Không dùng phím số hoặc `SPACE` khi đánh giá độ chính xác tự động vì chúng bỏ qua một phần bằng chứng model.
 
-## 5. Hybrid v2
+## 5. Chạy checkpoint BiLSTM pilot bằng camera
+
+Để hình không bị lật gương và cửa sổ mở ở 1280×720:
+
+```powershell
+python scripts/run_earbud_lstm.py `
+  --source 0 `
+  --model artifacts/action_model_pilot/best.pt `
+  --action-config configs/action_earbud_pilot_config.json `
+  --fsm-config configs/earbud_v2_fsm_config.json `
+  --device cpu `
+  --sample-fps 4 `
+  --no-mirror `
+  --window-width 1280 `
+  --window-height 720
+```
+
+Thêm `--fullscreen` nếu muốn mở toàn màn hình ngay từ đầu. Trong lúc chạy, nhấn `F` để chuyển qua lại giữa cửa sổ và toàn màn hình; `R` reset chu trình; `Q` hoặc `Esc` để thoát.
+
+`--no-mirror` chỉ tác động khi `--source` là camera. Video file luôn được hiển thị đúng chiều gốc.
+
+Ngưỡng nhận hành động nằm trong `configs/action_earbud_pilot_config.json`:
+
+```json
+"inference": {
+  "min_confidence": 0.5
+}
+```
+
+Runtime chỉ gửi hành động vào FSM khi `confidence > 0.5`. Giá trị bằng hoặc thấp hơn 0,5 được hiển thị là `uncertain` và không làm chuyển bước.
+
+## 6. Hybrid v2
+
+Bản kiểm tra từng khe và giao diện lớn: xem [HYBRID_SLOT_CHECK_20260927.md](HYBRID_SLOT_CHECK_20260927.md).
+
+```powershell
+.\run_hybrid.ps1 -Source 0 -Fullscreen
+```
+
+Launcher dùng checkpoint LSTM pilot đang có, không mirror mặc định. Bắt đầu bằng hộp mở rỗng với hai khe nhìn thấy; R để bắt đầu lượt mới.
 
 Sau khi có cả YOLO v2 và action model v2:
 

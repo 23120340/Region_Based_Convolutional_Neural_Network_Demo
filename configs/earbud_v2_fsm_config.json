@@ -75,6 +75,15 @@
       "violations": {
         "insert_first_earbud": "Chu trình đã hoàn tất.",
         "insert_second_earbud": "Chu trình đã hoàn tất.",
+        "wrong_earbud_side": "Tai nghe đang sai khe. Hãy mở hộp và sửa đúng bên.",
+        "remove_earbud_to_one": {
+          "message": "VIOLATION: Đã lấy một tai ra sau khi hoàn tất. Lắp lại tai bị thiếu trước khi đóng hộp.",
+          "target_state": "S2_FIRST_EARBUD_INSERTED"
+        },
+        "remove_earbud_to_zero": {
+          "message": "VIOLATION: Đã lấy cả hai tai ra. Lắp lại từng tai đúng khe trước khi đóng hộp.",
+          "target_state": "S1_CASE_READY"
+        },
         "close_case": "Hộp đã được đóng và ghi nhận hoàn tất."
       }
     }
