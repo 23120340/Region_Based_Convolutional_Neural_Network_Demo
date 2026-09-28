@@ -1,5 +1,31 @@
 # Việc bạn cần làm tiếp theo
 
+## Tách nhánh main / insert_earbud — 28/09/2026
+
+Main giữ năm nhãn first/second và các sửa UI/runtime; `feature/merge-insert-earbud-action` dùng bốn nhãn với insert chung. Hai model đã tách thư mục. Đọc [hướng dẫn hai nhánh](HUONG_DAN_HAI_NHANH_EARBUD.md) trước khi train hoặc đổi nhánh. Main được tái train vì weights năm lớp cũ đã bị ghi đè; bản bốn lớp đang có được giữ nguyên.
+
+Bạn cần thử trên feature: phải trước/trái trước, giữ tai đứng yên sau PASS, sai khe, tháo/lắp lại và đóng sớm. LSTM nhận insert chung; FSM vẫn xác nhận từng tai. Chưa có bằng chứng camera thực tế rằng lỗi idle hoặc lắp phải trước đã được xử lý hoàn toàn.
+
+## Cập nhật 28/09/2026: kiểm tra xác nhận trên giao diện
+
+Code đã bổ sung ô xác nhận lớn, trạng thái từng bước và lịch sử PASS/VIOLATION. Không đổi checkpoint YOLO hoặc LSTM. Những mục lịch sử phía dưới không phải trạng thái mới nhất của model/dataset.
+
+1. Thoát cửa sổ đang chạy bằng Q/Esc; mở PowerShell tại `G:\Internship\RBCNN_Demo` và chạy lại:
+
+   ```powershell
+   .\.venv\Scripts\python.exe scripts/run_hybrid.py --project configs/projects/earbud_v2.json --source 0 --no-mirror --fullscreen
+   ```
+
+2. Nhấn R; đưa hộp **mở rỗng** vào vùng quan sát, cho thấy hai khe. Chờ **ĐÃ XÁC NHẬN: Mở hộp** trước khi lắp tai thứ nhất. Dòng hướng dẫn sẽ cho biết số lần thấy khe trái/phải hoặc đang chờ LSTM `open_case`.
+3. Lắp một tai đúng bên, đưa tay ra để bbox rõ. Chờ bước “tai thứ nhất” chuyển **ĐÃ XÁC NHẬN** rồi lắp tai còn lại. Chỉ đóng nắp khi cả hai bước lắp đã được xác nhận.
+4. Khi đóng nắp được YOLO + LSTM + FSM chấp nhận, ô chính hiện **CHU TRÌNH ĐÃ HOÀN TẤT**. Nếu chỉ thấy nhãn LSTM/bbox mà bước chưa xanh thì chưa phải PASS; đọc ô **VIỆC CẦN LÀM / ĐIỀU KIỆN ĐANG CHỜ**.
+5. Thử lấy một tai đã lắp ra: phải báo VI PHẠM, bước bị lùi hiện **CẦN LÀM LẠI**, không giữ trạng thái hoàn tất. Lắp lại tai đúng bên và đóng nắp lại sau khi được chấp nhận. R xóa lịch sử trên giao diện, nhưng log JSONL vẫn được lưu.
+6. Nếu còn đứng bước, gửi ảnh **toàn giao diện** và đoạn log PASS/VIOLATION tương ứng. Nhớ ghi bên lắp trước, lớp bbox/độ tin cậy và dòng LSTM. Hiện PyTorch CPU-only; mục tiêu lấy mẫu 10 FPS không đảm bảo CPU đạt 10 FPS thực tế.
+
+Ngưỡng hành động hybrid vẫn **>0,5**. Fusion dùng bbox **≥0,35**, cùng ngưỡng YOLO hiển thị; ngưỡng độ phủ khe 40% và ổn định lắp/tháo ba lần YOLO vẫn giữ. Chỉ khởi tạo vị trí khe được phép gom ba quan sát trống dương tính trong năm lần YOLO gần nhất, để chịu được mất bbox ngắn; không suy luận khe trống từ bbox bị mất.
+
+YOLO mặc định kiểm tra mỗi frame theo camera config, không tự giảm xuống mỗi ba frame trên CPU. Nếu máy chậm, có thể thử `--yolo-every 2`, nhưng phải kiểm tra lại các bước nhanh; không giảm nhịp chỉ để tăng FPS hiển thị rồi coi kết quả xác nhận là tương đương.
+
 ## Cập nhật 27/09/2026: thử kiểm tra lắp/tháo theo từng khe
 
 - Đã có checkpoint YOLO sáu lớp và BiLSTM pilot năm lớp trên máy. Các mục lịch sử phía dưới có thể mô tả trạng thái cũ.

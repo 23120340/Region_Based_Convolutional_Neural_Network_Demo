@@ -127,6 +127,22 @@ Bản kiểm tra từng khe và giao diện lớn: xem [HYBRID_SLOT_CHECK_202609
 
 Launcher dùng checkpoint LSTM pilot đang có, không mirror mặc định. Bắt đầu bằng hộp mở rỗng với hai khe nhìn thấy; R để bắt đầu lượt mới.
 
+### Xác nhận quy trình trên giao diện (28/09)
+
+- Ô lớn dưới camera giữ thông báo **ĐÃ XÁC NHẬN** sau mỗi PASS; không bị hướng dẫn bước kế tiếp ghi đè. Chỉ FSM chấp nhận mới đánh dấu bước hoàn thành.
+- Bảng bên phải ghi rõ **ĐÃ XÁC NHẬN / ĐANG CHỜ / CHƯA THỰC HIỆN / CẦN LÀM LẠI**; có ba sự kiện gần nhất với giờ UTC. Khi đủ quy trình, ô chính hiện **CHU TRÌNH ĐÃ HOÀN TẤT**.
+- Nhãn LSTM và bbox không tự đồng nghĩa với PASS. Ô hướng dẫn riêng hiển thị bằng chứng đang thiếu: khe trống, độ phủ/ổn định YOLO, hoặc hành động LSTM đúng bước có confidence >0,5.
+- Lấy tai ra sẽ báo VI PHẠM và lùi tiến độ, hủy hoàn tất nếu cần. R xóa trạng thái/lịch sử giao diện và chuỗi đặc trưng; không xóa file log.
+- Runtime hybrid giữ cửa sổ 16 embedding liên tục sau PASS/VIOLATION, chỉ bỏ quyết định cũ. Lấy mẫu mặc định theo config train (10 FPS mục tiêu), kể cả CPU; CPU chậm có thể không đạt nhịp đó thực tế.
+- YOLO chạy theo `infer_every_n_frames` trong camera config (hiện là mỗi frame), không tự bỏ hai trong ba frame trên CPU. `--yolo-every 3` chỉ nên dùng khi cần giảm tải và đã kiểm tra không bỏ lỡ bước lắp nhanh.
+- Bbox Fusion và YOLO hiển thị đều dùng ≥0,35; confidence hành động vẫn >0,5. Khởi tạo khe trống dùng ba quan sát dương tính trong năm lần YOLO gần nhất; lắp/tháo vẫn yêu cầu ba lần liên tiếp.
+
+Thoát ứng dụng cũ rồi chạy lại để nạp code mới:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/run_hybrid.py --project configs/projects/earbud_v2.json --source 0 --no-mirror --fullscreen
+```
+
 Sau khi có cả YOLO v2 và action model v2:
 
 ```powershell

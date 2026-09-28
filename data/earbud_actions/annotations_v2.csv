@@ -1,4 +1,4 @@
-video_id,person_id,session_id,split,start_time_s,end_time_s,action_name
+﻿video_id,person_id,session_id,split,start_time_s,end_time_s,action_name
 per1_01_correct_20260917_144650_001,per1,01,train,0.0000,2.0667,idle
 per1_01_correct_20260917_144650_001,per1,01,train,2.3333,5.4667,open_case
 per1_01_correct_20260917_144650_001,per1,01,train,5.8667,9.3333,insert_first_earbud

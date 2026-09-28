@@ -18,7 +18,13 @@ $VENV_PYTHON  = Join-Path $PROJECT_ROOT ".venv\Scripts\python.exe"
 $SCRIPT       = Join-Path $PROJECT_ROOT "scripts\run_hybrid.py"
 $PROJECT_JSON = Join-Path $PROJECT_ROOT "configs\projects\earbud_v2.json"
 $YOLO_WEIGHTS = Join-Path $PROJECT_ROOT "artifacts\training\earbud_geometry_detector\weights\best.pt"
-$LSTM_WEIGHTS = Join-Path $PROJECT_ROOT "artifacts\action_model_pilot\best.pt"
+$LSTM_WEIGHTS = $null
+if (Test-Path -LiteralPath $PROJECT_JSON) {
+    $profile = Get-Content -LiteralPath $PROJECT_JSON -Raw -Encoding UTF8 | ConvertFrom-Json
+    # Ignored weights are shared when switching branches; the profile selects
+    # the branch-specific checkpoint instead of a hard-coded pilot filename.
+    $LSTM_WEIGHTS = Join-Path $PROJECT_ROOT $profile.action_model
+}
 
 Write-Host ""
 Write-Host "======================================================" -ForegroundColor Cyan
@@ -44,7 +50,7 @@ if (-not (Test-Path $YOLO_WEIGHTS)) {
     Write-Host "[OK] YOLO weights  : $YOLO_WEIGHTS" -ForegroundColor Green
 }
 
-if (-not (Test-Path $LSTM_WEIGHTS)) {
+if (-not $LSTM_WEIGHTS -or -not (Test-Path -LiteralPath $LSTM_WEIGHTS)) {
     Write-Host "[ERROR] Khong tim thay BiLSTM checkpoint:" -ForegroundColor Red
     Write-Host "        $LSTM_WEIGHTS" -ForegroundColor Red
     $ok = $false

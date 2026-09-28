@@ -1,5 +1,26 @@
 # Tóm tắt hợp nhất repository — 22/09/2026
 
+## Tách hai nhánh ngày 28/09/2026
+
+- Main khôi phục taxonomy năm lớp và annotation first/second từ Git cũ, giữ thời gian/split; đưa các sửa UI/runtime trước đây vào commit main.
+- Giữ lịch sử feature từ `af8c788`; merge main vào rồi hoàn thiện bốn lớp, test annotation/runtime/geometry và checkpoint riêng.
+- Pilot đã bị ghi đè bốn lớp: bảo toàn bản này ở `artifacts/action_model_insert_earbud/`; tái train năm lớp ở `artifacts/action_model_pilot/` từ cache/split cũ, không dùng baseline Google ViT làm bản khôi phục.
+- Launcher đọc model từ profile; kiểm tra action/backbone trước spatial encoder để báo nhầm model sớm.
+- Test staging: main 129 tests, feature 135 tests đạt. Năm lớp val-F1 0,9675/test-F1 0,9040; bốn lớp val-F1 1,0000/test-F1 0,9243. Pilot cùng người/session, không phải độ chính xác hệ thống hoặc xác minh camera.
+- Không tự push/reset/rebase/xóa thay đổi riêng của bạn. File capture đang đổi sang pen và việc xóa `configs/camera_earbud_hybrid_config.json` được giữ ngoài commit của lần tách này.
+- Chi tiết: `docs/HUONG_DAN_HAI_NHANH_EARBUD.md`.
+
+## Bổ sung 28/09/2026 — xác nhận quy trình không bị mất trên giao diện
+
+- `hybrid_dashboard.py`: thêm ô xác nhận PASS/hoàn tất/vi phạm lớn; tách hướng dẫn đang chờ khỏi kết quả đã chấp nhận; trạng thái từng bước rõ ràng và ba sự kiện gần nhất. Nguồn xác nhận là FSM, không phải nhãn LSTM. Bước bị lùi sau tháo tai hiển thị “CẦN LÀM LẠI”.
+- `run_hybrid.py`: truyền lịch sử kết quả sang UI, xóa lịch sử khi R; giữ chuỗi đặc trưng liên tục sau PASS/VIOLATION nhưng vô hiệu hóa quyết định cũ; lấy mẫu mặc định theo config train thay vì tự giảm xuống 4 FPS trên CPU.
+- YOLO mặc định theo camera config, không tự chuyển sang mỗi ba frame trên CPU. Replay cùng video thật 12,49 FPS: chạy mỗi ba frame bỏ lỡ bước lắp thứ hai và báo đóng sớm; chạy mỗi frame xác nhận đủ bốn bước. Đây là kiểm thử một clip, không phải đánh giá độ chính xác toàn bộ hệ thống.
+- `slot_fusion.py`: khởi tạo khe rỗng bằng ba quan sát dương tính trong cửa sổ năm lần YOLO để chịu mất bbox ngắn; giữ kiểm tra lắp/tháo ba lần liên tiếp, kiểm tra đúng bên và rollback. Hướng dẫn chỉ rõ đang chờ khe, YOLO ổn định hay LSTM đúng bước.
+- `earbud_v2.json`: thống nhất ngưỡng bbox Fusion với ngưỡng hiển thị YOLO 0,35; confidence hành động vẫn >0,5. Không thay model/checkpoint hoặc sửa taxonomy người dùng.
+- Bổ sung test xác nhận từ runtime tới dashboard, chuỗi đặc trưng không bị xóa sau PASS, lịch sử/reset, hoàn tất/rollback và khởi tạo khe khi detection chập chờn. Cập nhật hướng dẫn camera, việc người dùng cần thử và báo cáo tổng quan.
+- Các thay đổi được kiểm tra ở bản staging rồi chuyển đúng sang repo ổ G; không chỉnh bản repo ổ E.
+- Kiểm chứng: 124 unit/integration tests đạt bằng Python `.venv` hiện tại. Replay toàn bộ `per1_02_correct_20260918_144106_017.mp4` với checkpoint thật, cache offline và YOLO mỗi frame ghi đủ bốn PASS, kết thúc `S4_COMPLETED`. Đã xem bản render UI xác nhận/vi phạm; chưa trực tiếp kiểm thử camera laptop của người dùng.
+
 ## Bổ sung 27/09/2026 — kiểm tra bbox từng khe và giao diện hybrid
 
 - Thêm `PairedEarbudFusionEngine`: ghi nhớ vùng khe theo hộp; đối chiếu tai trái/phải với khe tương ứng; xác nhận khi độ phủ >= 40%, ổn định 3 lần YOLO và LSTM đúng bước có confidence > 0,5.

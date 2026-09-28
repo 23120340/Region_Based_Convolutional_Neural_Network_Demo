@@ -13,7 +13,7 @@
       "required_earbuds": 2,
       "stable_frames": 3,
       "min_action_confidence": 0.5,
-      "min_detection_confidence": 0.5,
+      "min_detection_confidence": 0.35,
       "containment_threshold": 0.6,
       "slot_overlap_threshold": 0.4,
       "require_closed_case": true,

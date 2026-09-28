@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections import deque
 from typing import Iterable
 
 from .earbud_fusion import EarbudFusionEngine, EarbudFusionEvent, EarbudSceneState, _normalise_label
@@ -29,13 +30,16 @@ class PairedEarbudFusionEngine(EarbudFusionEngine):
 
     def __init__(
         self, *, min_detection_confidence: float = 0.5,
-        require_closed_case: bool = True, **kwargs,
+        require_closed_case: bool = True, calibration_window: int | None = None, **kwargs,
     ) -> None:
         if not 0 <= min_detection_confidence <= 1:
             raise ValueError("min_detection_confidence phải nằm trong [0, 1]")
         self.min_detection_confidence = min_detection_confidence
         self.require_closed_case = require_closed_case
+        self.calibration_window = calibration_window
         super().__init__(**kwargs)
+        if calibration_window is not None and calibration_window < self.stable_frames:
+            raise ValueError("calibration_window phải >= stable_frames")
         if self.required_earbuds != 2 or len(self.earbud_slot_pairs) != 2:
             raise ValueError("Paired fusion yêu cầu hai cặp tai nghe/khe khác nhau")
         if len(set(self.earbud_slot_pairs.values())) != 2:
@@ -46,6 +50,7 @@ class PairedEarbudFusionEngine(EarbudFusionEngine):
     def reset(self) -> None:
         super().reset()
         self._anchors: dict[str, tuple[float, float, float, float]] = {}
+        self._empty_evidence: dict[str, deque] = {}
         self._confirmed_slots: set[str] = set()
         self._recovery_slots: set[str] = set()
         self._runs: dict[str, tuple[str, int]] = {}
@@ -71,6 +76,11 @@ class PairedEarbudFusionEngine(EarbudFusionEngine):
     @property
     def instruction(self) -> str:
         return self._instruction
+
+    @property
+    def calibration_progress(self) -> dict[str, int]:
+        return {s: sum(item is not None for item in self._empty_evidence.get(s, ()))
+                for s in self.slot_earbud_pairs}
 
     @property
     def status_text(self) -> str:
@@ -128,6 +138,7 @@ class PairedEarbudFusionEngine(EarbudFusionEngine):
         if case is None:
             self._case_run = "unknown", 0
             self._runs.clear()
+            self._empty_evidence.clear()
             self._views = tuple(SlotView(s, "unknown", 0, 0, s in self._confirmed_slots, None)
                                 for s in labels)
             self._last_scene = EarbudSceneState(False, False, 0, 0,
@@ -189,6 +200,19 @@ class PairedEarbudFusionEngine(EarbudFusionEngine):
             else:
                 status = "unknown"
             run = self._advance(s, status)
+            if not self._case_registered:
+                samples = self._empty_evidence.setdefault(
+                    s, deque(maxlen=self.calibration_window or self.stable_frames + 2)
+                )
+                # Tolerate a short detector dropout during initial calibration,
+                # but count only positively observed, uncovered empty slots.
+                # Occupancy/removal below still require consecutive frames.
+                if closed or status in {"occupied", "wrong_side"} or earbuds:
+                    samples.clear()
+                samples.append(self._relative(slots[s], case) if status == "empty" else None)
+                observed = [item for item in samples if item is not None]
+                if len(observed) >= self.stable_frames:
+                    self._anchors[s] = observed[-1]
             if run >= self.stable_frames:
                 if status == "empty":
                     stable_empty.add(s)
@@ -216,8 +240,17 @@ class PairedEarbudFusionEngine(EarbudFusionEngine):
         )
 
         if not self._case_registered:
-            self._instruction = "Mở hộp rỗng, thấy rõ hai khe và chờ xác nhận open_case."
-            if len(stable_empty) == 2 and (not self.require_case_action or
+            progress = self.calibration_progress
+            calibrated = all(progress[s] >= self.stable_frames for s in labels)
+            empty_ready = not closed and case_stable and calibrated and not earbuds
+            if not calibrated:
+                counts = "; ".join(f"{self._sides([s])} {min(progress[s], self.stable_frames)}/{self.stable_frames}" for s in labels)
+                self._instruction = f"Mở hộp rỗng, giữ rõ cả hai khe. Đang ghi nhớ khe: {counts}."
+            elif not empty_ready:
+                self._instruction = "Chờ hộp mở ổn định và không có tai nghe trong hộp để xác nhận bước mở."
+            else:
+                self._instruction = f"Đã ghi nhớ hai khe. Chờ LSTM: {self.case_action} > {self.min_action_confidence:g}."
+            if empty_ready and (not self.require_case_action or
                                         self._action_is(action_prediction, self.case_action)):
                 self._case_registered = True
                 self._instruction = "Hộp sẵn sàng. Lắp tai trái hoặc phải vào đúng khe."
@@ -294,6 +327,10 @@ class PairedEarbudFusionEngine(EarbudFusionEngine):
                                    action_prediction)
         else:
             self._order_latch = None
+            if self.confirmed_insertions < 2 and self._action_is(action_prediction, expected):
+                self._instruction = (f"LSTM đã nhận {expected}; chờ tai đúng khe phủ ít nhất "
+                    f"{self.slot_overlap_threshold:.0%}, ổn định {self.stable_frames} lần YOLO. "
+                    "Chưa xác nhận chỉ từ hành động.")
 
         close_evidence = (closed and case_stable) or not self.require_closed_case
         if close_evidence and self._action_is(action_prediction, "close_case") and not self._close_latched:
@@ -306,4 +343,9 @@ class PairedEarbudFusionEngine(EarbudFusionEngine):
             return self._event("close_case", self._instruction, action_prediction)
         if closed and self._close_latched and self.confirmed_insertions == 2:
             self._instruction = "Hoàn tất. Nhấn R để bắt đầu hộp mới."
+        elif self.confirmed_insertions == 2 and not self._recovery_slots:
+            if closed and case_stable:
+                self._instruction = f"YOLO thấy hộp đóng; chờ LSTM: close_case > {self.min_action_confidence:g}."
+            elif self._action_is(action_prediction, "close_case"):
+                self._instruction = f"LSTM đã nhận đóng nắp; chờ YOLO close_case ổn định {self.stable_frames} lần."
         return None

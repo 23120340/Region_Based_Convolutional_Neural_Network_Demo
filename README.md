@@ -10,6 +10,17 @@ mở hộp → lắp tai thứ nhất → lắp tai thứ hai → đóng hộp
 
 Đây là prototype nghiên cứu. Camera 2D không xác nhận được tiếp xúc điện hay chất lượng sạc.
 
+## Hai nhánh phát triển — cập nhật 28/09/2026
+
+| Nhánh | Action model | Checkpoint |
+|---|---|---|
+| `main` | 5 lớp; tách `insert_first_earbud` / `insert_second_earbud` | `artifacts/action_model_pilot/best.pt` |
+| `feature/merge-insert-earbud-action` | 4 lớp; một `insert_earbud`, Fusion xác định lần lắp | `artifacts/action_model_insert_earbud/best.pt` |
+
+Hai nhánh đều có giao diện xác nhận PASS/hoàn tất, lịch sử, rollback khi tháo tai, chuỗi đặc trưng liên tục và YOLO theo camera config. Trọng số không nằm trong Git: **không dùng chung file best.pt cho hai taxonomy**.
+
+Đọc [cách đổi nhánh, chạy và train riêng](docs/HUONG_DAN_HAI_NHANH_EARBUD.md). Các lệnh/thông tin lịch sử phía dưới cần đối chiếu với profile của nhánh đang mở.
+
 ## Kiến trúc
 
 ```mermaid
@@ -24,7 +35,7 @@ flowchart LR
 ```
 
 - YOLO trả lời vật gì đang ở đâu và số khe còn trống.
-- DINOv2 + BiLSTM nhận diện sáu nhãn hành động: `idle`, `open_case`, `insert_first_earbud`, `insert_second_earbud`, `close_case`, `remove_earbud`.
+- DINOv2 + BiLSTM trên `main` nhận diện năm nhãn: `idle`, `open_case`, `insert_first_earbud`, `insert_second_earbud`, `close_case`. Tháo tai được kiểm tra từ geometry, không cần lớp LSTM `remove_earbud`.
 - Fusion chỉ chấp nhận bước lắp khi hành động và thay đổi vật lý cùng khớp.
 - FSM quản lý thứ tự, lỗi đóng sớm và việc tai nghe bị lấy ra.
 
@@ -40,9 +51,9 @@ Không dùng checkpoint baseline với config v2. Thứ tự lớp và kích th�
 ## Hiện trạng thật
 
 - Có video local trong `data/earbud_actions/raw_videos/`.
-- `data/earbud_actions/annotations_v2.csv` mới chỉ có header: bạn vẫn phải gán nhãn v2.
+- Có 185 đoạn annotation của 35 video; file `annotations_v2_pilot_split.csv` giữ train/val/test theo video. Kết quả pilot chưa đánh giá người/session mới.
 - Detector baseline cũ nằm trong `artifacts/training/earbud_merged_detector/`; nó không khớp detector geometry 6 lớp trái/phải.
-- Chưa có `artifacts/training/earbud_geometry_detector/weights/best.pt`.
+- Đã có `artifacts/training/earbud_geometry_detector/weights/best.pt` cho sáu lớp geometry.
 - Chưa có `artifacts/action_model_v2/best.pt`.
 - Python hiện tại đang dùng PyTorch CPU; muốn dùng NVIDIA GPU phải cài bản PyTorch CUDA phù hợp.
 

@@ -201,12 +201,15 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
         local_files_only=not args.allow_download,
     )
     cpu_mode = recognizer.device.type == "cpu"
-    sample_fps = args.sample_fps or (4.0 if cpu_mode else action_config.spatial.sample_fps)
-    yolo_every = args.yolo_every or (3 if cpu_mode else camera_config.infer_every_n_frames)
+    # Keep the temporal cadence used during training, including on CPU.
+    sample_fps = args.sample_fps or action_config.spatial.sample_fps
+    # Do not silently reduce the observations used by geometry stability checks.
+    yolo_every = args.yolo_every or camera_config.infer_every_n_frames
     if cpu_mode and isinstance(_source(args.source), int):
         print(
             "[WARN] Đang chạy YOLO và ViT bằng CPU; runtime dùng "
-            f"sample_fps={sample_fps:g}, yolo_every={yolo_every} để giảm lag."
+            f"sample_fps mục tiêu={sample_fps:g}, yolo_every={yolo_every}. "
+            "Tốc độ thực tế có thể thấp hơn nếu CPU không xử lý kịp."
         )
 
     source = _source(args.source)
@@ -227,6 +230,7 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
     latest_action_time = 0.0
     detections: list[Detection] = []
     outcome: FsmOutcome | None = None
+    recent_outcomes: deque[FsmOutcome] = deque(maxlen=32)
     frame_index = 0
     yolo_ms = 0.0
     vit_ms = 0.0
@@ -298,8 +302,9 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
                     outcome = monitor.submit_stable_action(event.action)
                     print(f"[{outcome.type}] {event.action}: {outcome.message} | fusion={event.reason}")
                     if outcome.type in {"PASS", "VIOLATION"}:
-                        # Old action windows must not authorize a later physical step.
-                        embeddings.clear()
+                        recent_outcomes.append(outcome)
+                        # Invalidate the decision, not the rolling spatial context.
+                        # Clearing 16 embeddings created blind gaps after each step.
                         latest_action = None
                         latest_action_time = 0.0
 
@@ -318,6 +323,7 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
                 frame, tracker=tracker, fusion=fusion, prediction=latest_action,
                 prediction_fresh=latest_action is not None and now-latest_action_time <= args.action_ttl,
                 action_threshold=action_threshold, outcome=outcome,
+                recent_outcomes=tuple(recent_outcomes),
                 embedding_count=len(embeddings), sequence_length=sequence_length,
                 yolo_ms=yolo_ms, vit_ms=vit_ms, fps=display_fps,
                 mirror=not args.no_mirror and isinstance(source, int),
@@ -335,6 +341,7 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
             if key in (ord("r"), ord("R")):
                 outcome = monitor.reset()
                 fusion.reset()
+                recent_outcomes.clear()
                 embeddings.clear()
                 latest_action = None
                 latest_action_time = 0.0

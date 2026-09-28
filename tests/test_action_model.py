@@ -1,6 +1,8 @@
 import importlib
 import sys
 import unittest
+from unittest.mock import patch
+import tempfile
 from pathlib import Path
 
 import torch
@@ -15,6 +17,28 @@ from assembly.models.vit_lstm_recognizer import ViTLstmActionRecognizer
 
 
 class ActionModelTests(unittest.TestCase):
+    def test_wrong_branch_checkpoint_rejected_before_spatial_encoder_initializes(self):
+        config_path = ROOT / "configs/action_earbud_pilot_config.json"
+        config = load_action_model_config(config_path)
+        with tempfile.TemporaryDirectory() as directory:
+            checkpoint = Path(directory) / "wrong_branch.pt"
+            torch.save({"actions": tuple(reversed(config.actions))}, checkpoint)
+            with patch("assembly.models.vit_lstm_recognizer.ViTSpatialEncoder") as encoder:
+                with self.assertRaisesRegex(ValueError, "không khớp"):
+                    ViTLstmActionRecognizer(config_path, checkpoint, device="cpu")
+                encoder.assert_not_called()
+
+    def test_wrong_backbone_checkpoint_rejected_before_encoder(self):
+        config_path = ROOT / "configs/action_earbud_pilot_config.json"
+        config = load_action_model_config(config_path)
+        with tempfile.TemporaryDirectory() as directory:
+            checkpoint = Path(directory) / "wrong_backbone.pt"
+            torch.save({"actions": config.actions, "config": {"spatial": {"embedding_dim": 768}}}, checkpoint)
+            with patch("assembly.models.vit_lstm_recognizer.ViTSpatialEncoder") as encoder:
+                with self.assertRaisesRegex(ValueError, "spatial.embedding_dim"):
+                    ViTLstmActionRecognizer(config_path, checkpoint, device="cpu")
+                encoder.assert_not_called()
+
     def test_project_action_config_is_valid(self) -> None:
         config = load_action_model_config(ROOT / "configs" / "action_earbud_config.json")
         self.assertEqual(config.spatial.embedding_dim, 768)

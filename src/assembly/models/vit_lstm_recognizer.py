@@ -24,6 +24,22 @@ class ViTLstmActionRecognizer:
     ) -> None:
         self.config = load_action_model_config(config_path)
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
+        # Git branches do not version ignored weights. Reject a 4/5-class mix
+        # before initializing the (potentially slow) spatial backbone.
+        checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
+        checkpoint_actions = tuple(checkpoint.get("actions", ()))
+        if checkpoint_actions and checkpoint_actions != self.config.actions:
+            raise ValueError(
+                f"Checkpoint {checkpoint_path}: actions={checkpoint_actions} không khớp "
+                f"config {config_path}: actions={self.config.actions}. "
+                "Kiểm tra model riêng cho nhánh 4 hoặc 5 lớp; không đổi nhãn bằng tay để ép nạp."
+            )
+        checkpoint_config = checkpoint.get("config", {})
+        spatial = checkpoint_config.get("spatial", {}) if isinstance(checkpoint_config, dict) else {}
+        for key, expected in (("backbone", self.config.spatial.backbone),
+                              ("embedding_dim", self.config.spatial.embedding_dim)):
+            if key in spatial and spatial[key] != expected:
+                raise ValueError(f"Checkpoint spatial.{key} không khớp action config")
         self.encoder = ViTSpatialEncoder(
             self.config.spatial.backbone,
             str(self.device),
@@ -42,10 +58,6 @@ class ViTLstmActionRecognizer:
             bidirectional=temporal.bidirectional,
             head_dim=temporal.head_dim,
         ).to(self.device)
-        checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=False)
-        checkpoint_actions = tuple(checkpoint.get("actions", ()))
-        if checkpoint_actions and checkpoint_actions != self.config.actions:
-            raise ValueError("Danh sách action trong checkpoint không khớp action config")
         self.model.load_state_dict(checkpoint["model_state"])
         self.model.eval()
 

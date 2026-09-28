@@ -1,5 +1,9 @@
 # Tài liệu dự án Earbud Assembly
 
+[Hai nhánh: main năm lớp và thử nghiệm insert_earbud bốn lớp](HUONG_DAN_HAI_NHANH_EARBUD.md) — đổi nhánh, checkpoint riêng, train/evaluate và các tình huống cần thử.
+
+[Báo cáo tổng quan: hiểu dự án trong 10 giây](BAO_CAO_TONG_QUAN_DU_AN.md) — mục tiêu, sơ đồ, model đang dùng, kết quả và giới hạn hiện tại.
+
 Đọc theo thứ tự sau:
 
 1. [VIEC_BAN_CAN_LAM.md](VIEC_BAN_CAN_LAM.md) — checklist chính xác phần bạn phải thu thập, gán nhãn và train.

@@ -60,7 +60,7 @@ Trong `configs/projects/earbud_v2.json`:
 ```json
 "stable_frames": 3,
 "min_action_confidence": 0.5,
-"min_detection_confidence": 0.5,
+"min_detection_confidence": 0.35,
 "containment_threshold": 0.6,
 "slot_overlap_threshold": 0.4,
 "require_closed_case": true
@@ -68,12 +68,15 @@ Trong `configs/projects/earbud_v2.json`:
 
 `stable_frames` tính theo số lần YOLO chạy, không phải số frame hiển thị. Hybrid chỉ nhận LSTM khi confidence **lớn hơn** `min_action_confidence` (0,5). Có thể ghi đè bằng `--action-confidence 0.65`. Confidence YOLO và confidence LSTM là hai ngưỡng khác nhau. Ngưỡng trong project profile ưu tiên hơn action config khi chạy hybrid; script LSTM riêng vẫn đọc action config.
 
+Cập nhật 28/09: Fusion dùng cùng ngưỡng bbox 0,35 với YOLO hiển thị. Riêng khởi tạo vị trí khe rỗng gom ba quan sát dương tính trong năm lần YOLO gần nhất, chịu được mất bbox ngắn; bằng chứng lắp/tháo vẫn cần ba lần liên tiếp. Ô hướng dẫn cho biết đang chờ khe, YOLO ổn định hoặc LSTM đúng bước.
+
 LSTM không bắt buộc phải có lớp `remove_earbud`: khe trống xuất hiện trở lại là bằng chứng tháo. Nếu sau này train lớp tháo, dự đoán ấy là thông tin hỗ trợ.
 
 ## Giao diện và giới hạn
 
 - Canvas 1440×900, cửa sổ kéo giãn được hoặc toàn màn hình; ảnh camera giữ tỉ lệ.
 - Cột bên phải hiển thị các bước, trạng thái mỗi khe, phần trăm phủ và tiến độ ổn định.
+- Ô lớn dưới camera giữ **ĐÃ XÁC NHẬN** sau PASS hoặc **CHU TRÌNH ĐÃ HOÀN TẤT** sau đủ quy trình. Lịch sử ba sự kiện gần nhất nằm bên phải; khi tháo tai, bước bị lùi hiện **CẦN LÀM LẠI**. Nhãn LSTM/bbox đơn lẻ không được coi là xác nhận.
 - Hướng dẫn tiếng Việt bên dưới chỉ rõ phải lắp lại bên nào.
 - Giao diện được vẽ sau suy luận, không đưa chữ và overlay vào DINOv2/YOLO.
 - Khi không thấy hộp, hệ thống tạm dừng kiểm tra, không tự xóa tiến độ hoặc kết luận tháo.

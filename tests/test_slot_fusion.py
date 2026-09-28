@@ -198,6 +198,74 @@ class SlotFusionTests(unittest.TestCase):
         self.assertEqual(self.engine.confirmed_insertions, 0)
         self.assertEqual(self.tracker.state, "S0_IDLE")
 
+    def test_empty_calibration_tolerates_short_dropouts_without_simultaneous_runs(self):
+        event = None
+        for detections in ([CASE, LEFT], [CASE, RIGHT], [CASE, LEFT, RIGHT],
+                           [CASE, LEFT], [CASE, RIGHT]):
+            event = self.engine.update(detections, Prediction("open_case", 0.95))
+        self.assertIsNotNone(event)
+        self.assertEqual(event.action, "open_case")
+        self.assertEqual(self.engine.calibration_progress, {"empty_left": 3, "empty_right": 3})
+        self.tracker.process(event.action)
+        self.assertEqual(self.feed([CASE, LEFT, RE], "insert_first_earbud").action, "insert_first_earbud")
+
+    def test_one_empty_detection_does_not_calibrate(self):
+        self.assertIsNone(self.feed([CASE, LEFT, RIGHT], "open_case", count=1))
+        self.assertIsNone(self.feed([CASE], "open_case", count=8))
+        self.assertEqual(self.engine.calibration_progress, {"empty_left": 0, "empty_right": 0})
+        self.assertEqual(self.tracker.completed_steps, [])
+
+    def test_stale_empty_calibration_cannot_authorize_open(self):
+        self.feed([CASE, LEFT, RIGHT])
+        self.feed([CASE], count=6)
+        self.assertIsNone(self.feed([CASE], "open_case", count=6))
+        self.assertIn("0/3", self.engine.instruction)
+        self.assertEqual(self.tracker.state, "S0_IDLE")
+
+    def test_missing_case_discards_initial_calibration(self):
+        self.feed([CASE, LEFT, RIGHT])
+        self.feed([], count=1)
+        self.assertIsNone(self.feed([CASE], "open_case"))
+        self.assertEqual(self.tracker.state, "S0_IDLE")
+
+    def test_empty_boxes_under_an_earbud_cannot_calibrate(self):
+        self.assertIsNone(self.feed([CASE, LEFT, RIGHT, RE], "open_case", count=10))
+        self.assertEqual(self.engine.confirmed_insertions, 0)
+        self.assertFalse(self.engine._case_registered)
+
+    def test_profile_detection_threshold_matches_display_without_weakening_lstm(self):
+        from assembly.camera_config import load_camera_config
+        from assembly.project_config import load_project_config, build_fusion_engine
+        project = load_project_config(ROOT / "configs/projects/earbud_v2.json", ROOT)
+        engine = build_fusion_engine(project.fusion)
+        camera = load_camera_config(project.camera_config)
+        self.assertEqual(engine.min_detection_confidence, camera.confidence)
+        self.assertEqual(engine.min_action_confidence, 0.5)
+        weak = [box(d.label, d.box_xyxy, 0.4) for d in [CASE, LEFT, RIGHT]]
+        for _ in range(3):
+            event = engine.update(weak, Prediction("open_case", 0.5))
+        self.assertIsNone(event)
+        self.assertEqual(engine.update(weak, Prediction("open_case", 0.95)).action, "open_case")
+
+    def test_invalid_calibration_window_is_rejected(self):
+        with self.assertRaises(ValueError):
+            PairedEarbudFusionEngine(stable_frames=3, calibration_window=2,
+                earbud_slot_pairs={"left_earbud": "empty_left", "right_earbud": "empty_right"})
+
+    def test_confident_model_alone_explains_missing_geometry(self):
+        self.opened()
+        self.assertIsNone(self.feed([CASE], "insert_first_earbud"))
+        self.assertIn("chờ tai đúng khe", self.engine.instruction)
+        self.assertEqual(self.tracker.state, "S1_CASE_READY")
+
+    def test_close_waiting_explains_which_model_is_missing(self):
+        self.both()
+        self.assertIsNone(self.feed([CASE, LE, RE], "close_case"))
+        self.assertIn("chờ YOLO close_case", self.engine.instruction)
+        self.assertIsNone(self.feed([CLOSED], "idle"))
+        self.assertIn("chờ LSTM: close_case", self.engine.instruction)
+        self.assertFalse(self.tracker.is_complete)
+
 
 if __name__ == "__main__":
     unittest.main()
