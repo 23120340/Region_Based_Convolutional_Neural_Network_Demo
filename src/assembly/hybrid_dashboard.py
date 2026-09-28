@@ -58,6 +58,17 @@ def _font(size: int):
     return ImageFont.load_default(size=size)
 
 
+def slot_coverage_text(slot) -> str:
+    """Do not present missing detector evidence as a measured zero overlap."""
+    if slot.status == "closed":
+        return "Phủ khe: nắp đóng"
+    if slot.box is None:
+        return "Phủ khe: thiếu bbox khe"
+    if not slot.coverage_available:
+        return "Phủ khe: thiếu bbox tai"
+    return f"Tai phủ khe {slot.coverage:.0%}"
+
+
 def draw_dashboard(
     frame, *, tracker, fusion, prediction, prediction_fresh: bool,
     action_threshold: float, outcome=None, recent_outcomes=(),
@@ -125,8 +136,9 @@ def draw_dashboard(
         color = red if slot.status == "wrong_side" else green if slot.confirmed else amber
         text((1000, top), f"KHE {side}: {statuses.get(slot.status, slot.status)}", 20, color)
         stable = min(slot.stable_count, fusion.stable_frames)
-        text((1000, top+29), f"Phủ khe {slot.coverage:.0%}  •  Ổn định {stable}/{fusion.stable_frames}", 17, muted)
-        text((1000, top+53), "Đã xác nhận lắp" if slot.confirmed else "Chưa xác nhận lắp", 16, color)
+        text((1000, top+29), f"{slot_coverage_text(slot)} • ổn định {stable}/{fusion.stable_frames}", 15, muted)
+        empty_text = f"Empty {slot.empty_confidence:.0%}" if slot.empty_confidence is not None else "Empty —"
+        text((1000, top+53), f"{empty_text} • " + ("Đã xác nhận lắp" if slot.confirmed else "Chưa xác nhận lắp"), 15, color)
     wrapped((1000, 574), f"FSM: {tracker.state}", 395, 17, muted, 1)
     text((1000, 612), "LỊCH SỬ XÁC NHẬN / VI PHẠM", 18)
     history = [item for item in recent_outcomes if item.type in {"PASS", "VIOLATION"}][-3:]

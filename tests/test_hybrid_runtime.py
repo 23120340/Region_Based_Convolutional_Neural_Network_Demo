@@ -23,6 +23,21 @@ def d(label, coords):
 
 
 class HybridRuntimeTests(unittest.TestCase):
+    def test_camera_listing_does_not_load_models_or_start_runtime(self):
+        spec = importlib.util.spec_from_file_location("hybrid_list_under_test", ROOT / "scripts/run_hybrid.py")
+        app = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(app)
+        with patch.object(sys, "argv", ["run_hybrid.py", "--list-cameras", "--max-camera-index", "8"]), \
+             patch.object(app, "discover_camera_indices", return_value=[0, 3]) as discover, \
+             patch.object(app, "YoloWorldDetector") as detector, \
+             patch.object(app, "ViTLstmActionRecognizer") as recognizer, \
+             contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(app.main(), 0)
+        discover.assert_called_once_with(app.cv2, 8)
+        detector.assert_not_called()
+        recognizer.assert_not_called()
+        self.assertIn("0, 3", output.getvalue())
+
     def test_gui_receives_persistent_confirmations_and_rolling_context_then_reset_clears_history(self):
         from assembly.hybrid_dashboard import confirmation_view
         spec = importlib.util.spec_from_file_location("hybrid_confirmation_under_test", ROOT / "scripts/run_hybrid.py")

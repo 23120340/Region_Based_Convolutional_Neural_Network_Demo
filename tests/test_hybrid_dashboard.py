@@ -9,12 +9,27 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from assembly.config import load_config
 from assembly.fsm import ConfigurableAssemblyTracker
-from assembly.hybrid_dashboard import draw_dashboard, confirmation_view
+from assembly.hybrid_dashboard import draw_dashboard, confirmation_view, slot_coverage_text
+from assembly.slot_fusion import SlotView
+from assembly.vision import Detection
 from assembly.model_contract import Prediction
 from assembly.project_config import load_project_config, build_fusion_engine
 
 
 class DashboardTests(unittest.TestCase):
+    def test_coverage_distinguishes_missing_boxes_partial_overlap_and_zero(self):
+        box = (0, 0, 100, 100)
+        self.assertIn("thiếu bbox tai", slot_coverage_text(
+            SlotView("empty_right", "empty", 0, 3, False, box, False, 0.9)))
+        self.assertIn("thiếu bbox khe", slot_coverage_text(
+            SlotView("empty_right", "unknown", 0, 0, False, None, False)))
+        self.assertEqual(slot_coverage_text(
+            SlotView("empty_right", "unknown", 0.27, 2, False, box)), "Tai phủ khe 27%")
+        self.assertEqual(slot_coverage_text(
+            SlotView("empty_right", "empty", 0, 3, False, box)), "Tai phủ khe 0%")
+        self.assertIn("nắp đóng", slot_coverage_text(
+            SlotView("empty_right", "closed", 0, 3, False, box, False)))
+
     def setUp(self):
         self.tracker = ConfigurableAssemblyTracker(load_config(ROOT / "configs/earbud_v2_fsm_config.json"))
 
@@ -83,6 +98,9 @@ class DashboardTests(unittest.TestCase):
         project = load_project_config(ROOT / "configs/projects/earbud_v2.json", ROOT)
         fusion = build_fusion_engine(project.fusion)
         tracker = ConfigurableAssemblyTracker(load_config(project.fsm_config))
+        fusion.update([Detection("open_case", "open_case", 0.95, (0, 0, 200, 200)),
+                       Detection("empty_left", "empty_left", 0.9, (30, 60, 80, 130)),
+                       Detection("empty_right", "empty_right", 0.8, (120, 60, 170, 130))])
         for shape in ((480, 640, 3), (720, 1280, 3), (1280, 720, 3)):
             frame = np.full(shape, 120, dtype=np.uint8)
             original = frame.copy()

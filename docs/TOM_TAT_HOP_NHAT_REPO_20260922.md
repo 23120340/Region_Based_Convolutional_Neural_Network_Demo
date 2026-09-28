@@ -1,5 +1,17 @@
 # Tóm tắt hợp nhất repository — 22/09/2026
 
+## Bổ sung 28/09/2026 — ngưỡng empty, độ phủ và camera USB
+
+- Sửa trên `main` hiện tại tại `G:\Internship\RBCNN_Demo`; không chuyển nhánh, thay/train trọng số, đổi nhãn action hay push GitHub.
+- `camera_config.py`: hỗ trợ `classes[].min_confidence` tùy chọn với phép so sánh nghiêm ngặt >; config cũ không có trường này vẫn dùng ngưỡng chung.
+- `yolo_world_detector.py` và config camera: lọc `empty_left/right` > 0,5 trước cả overlay/Fusion, giữ ngưỡng các lớp khác 0,35.
+- `slot_fusion.py` và project profile: thêm `min_empty_confidence=0.5` cho bằng chứng hiệu chuẩn/tháo; không suy ra lắp từ việc mất bbox.
+- Sửa độ phủ chẩn đoán: vẫn tính phần giao dưới ngưỡng lắp 40%, thêm cờ đủ bbox để tính và confidence empty. Luật xác nhận đúng bên/ổn định/LSTM không bị nới.
+- Dashboard: ghi rõ thiếu bbox tai/khe hoặc nắp đóng; hiển thị độ phủ và confidence empty riêng. Bbox tham chiếu đổi chú thích `empty_* 0%` thành `slot_* cover:...`, tránh nhầm anchor với detection empty.
+- `run_hybrid.py`: in checkpoint YOLO/LSTM + danh sách actions; thêm `--list-cameras --max-camera-index N` dùng helper dò camera sẵn có, thoát trước khi nạp model.
+- Bổ sung tests biên 0,5/0,5001, cấu hình cũ, lọc output YOLO, không tháo bởi empty dưới ngưỡng, độ phủ thấp/thiếu bbox và dò camera không nạp model. 140 tests đạt trên bản staging và bản thật ở ổ G (14,9 giây); không tự mở camera để kiểm thử.
+- Hướng dẫn: `docs/NGUONG_EMPTY_VA_CAMERA_DIEN_THOAI.md`; cập nhật `docs/VIEC_BAN_CAN_LAM.md`. Giữ nguyên hai thay đổi riêng có sẵn của người dùng.
+
 ## Tách hai nhánh ngày 28/09/2026
 
 - Main khôi phục taxonomy năm lớp và annotation first/second từ Git cũ, giữ thời gian/split; đưa các sửa UI/runtime trước đây vào commit main.

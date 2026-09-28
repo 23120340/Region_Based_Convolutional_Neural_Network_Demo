@@ -16,6 +16,7 @@ import cv2
 
 from assembly.action_config import load_action_model_config
 from assembly.camera_config import load_camera_config
+from assembly.camera_app import discover_camera_indices
 from assembly.config import load_config
 from assembly.fsm import ConfigurableAssemblyTracker, FsmOutcome
 from assembly.hybrid_dashboard import draw_dashboard
@@ -106,6 +107,8 @@ def build_parser(default_project: Path = DEFAULT_PROJECT) -> argparse.ArgumentPa
     )
     parser.add_argument("--project", type=Path, default=default_project, help="Project profile JSON")
     parser.add_argument("--source", default="0", help="Camera index hoặc đường dẫn video")
+    parser.add_argument("--list-cameras", action="store_true", help="Liệt kê camera đọc được, không nạp model")
+    parser.add_argument("--max-camera-index", type=int, default=5, help="Chỉ số camera cao nhất cần dò")
     parser.add_argument("--camera-config", type=Path, default=None)
     parser.add_argument("--fsm-config", type=Path, default=None)
     parser.add_argument("--action-config", type=Path, default=None)
@@ -132,6 +135,14 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
     _configure_utf8_console()
     parser = build_parser(default_project)
     args = parser.parse_args()
+
+    if args.max_camera_index < 0:
+        parser.error("--max-camera-index phải >= 0")
+    if args.list_cameras:
+        indices = discover_camera_indices(cv2, args.max_camera_index)
+        print("Camera có thể đọc: " + (", ".join(map(str, indices)) if indices else "không tìm thấy"))
+        print("Chọn đúng camera bằng --source N; số N không cố định theo thiết bị.")
+        return 0
 
     if args.sample_fps is not None and args.sample_fps <= 0:
         parser.error("--sample-fps phải > 0")
@@ -179,9 +190,11 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
     )
 
     print("[INFO] Đang nạp checkpoint YOLO...", flush=True)
+    detector_model_path = _resolve_detector_model(camera_config.model, args.yolo_model)
+    print(f"[INFO] YOLO checkpoint: {detector_model_path}", flush=True)
     detector = YoloWorldDetector(
         camera_config,
-        model_path=_resolve_detector_model(camera_config.model, args.yolo_model),
+        model_path=detector_model_path,
         device=args.device,
     )
     required_labels = set(getattr(fusion, "earbud_slot_pairs", {}))
@@ -194,6 +207,7 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
         if missing:
             raise SystemExit(f"YOLO checkpoint thiếu nhãn cho geometry: {sorted(missing)}")
     print("[INFO] Đang nạp DINOv2 và BiLSTM từ cache/checkpoint...", flush=True)
+    print(f"[INFO] LSTM checkpoint: {action_model_path} | actions={list(action_config.actions)}", flush=True)
     recognizer = ViTLstmActionRecognizer(
         config_path=action_config_path,
         checkpoint_path=action_model_path,
@@ -318,7 +332,10 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
             for view in getattr(fusion, "slot_views", ()):
                 if view.box:
                     cv2.rectangle(frame, view.box[:2], view.box[2:], (255, 210, 80), 1)
-                    _put_text(frame, f"{view.label} {view.coverage:.0%}", (view.box[0], view.box[3]+18), 0.45)
+                    coverage = f"{view.coverage:.0%}" if view.coverage_available else "N/A"
+                    # The reference box may be an anchor, not an empty detection.
+                    slot_label = view.label.replace("empty_", "slot_", 1)
+                    _put_text(frame, f"{slot_label} cover:{coverage}", (view.box[0], view.box[3]+18), 0.45)
             screen = draw_dashboard(
                 frame, tracker=tracker, fusion=fusion, prediction=latest_action,
                 prediction_fresh=latest_action is not None and now-latest_action_time <= args.action_ttl,

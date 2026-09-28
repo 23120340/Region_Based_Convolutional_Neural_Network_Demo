@@ -1,4 +1,6 @@
 import sys
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -11,6 +13,37 @@ from assembly.yolo_world_detector import _normalise_class_name
 
 
 class CameraConfigTests(unittest.TestCase):
+    def test_empty_threshold_is_strict_and_does_not_raise_earbud_floor(self):
+        config = load_camera_config(ROOT / "configs/camera_earbud_config.json")
+        for label in ("empty_left", "empty_right"):
+            self.assertEqual(config.label_map[label].min_confidence, 0.5)
+            self.assertFalse(config.accepts_detection(label, 0.49))
+            self.assertFalse(config.accepts_detection(label, 0.5))
+            self.assertTrue(config.accepts_detection(label, 0.5001))
+        self.assertTrue(config.accepts_detection("left_earbud", 0.35))
+        self.assertFalse(config.accepts_detection("left_earbud", 0.349))
+        self.assertFalse(config.accepts_detection("unknown", 0.99))
+
+    def test_old_config_without_per_class_confidence_keeps_global_floor(self):
+        raw = json.loads((ROOT / "configs/camera_earbud_config.json").read_text(encoding="utf-8"))
+        for entry in raw["classes"]:
+            entry.pop("min_confidence", None)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "camera.json"
+            path.write_text(json.dumps(raw), encoding="utf-8")
+            config = load_camera_config(path)
+        self.assertTrue(config.accepts_detection("empty_left", 0.35))
+
+    def test_invalid_per_class_threshold_is_rejected(self):
+        raw = json.loads((ROOT / "configs/camera_earbud_config.json").read_text(encoding="utf-8"))
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "camera.json"
+            for value in (-0.1, 1.1, float("nan")):
+                raw["classes"][0]["min_confidence"] = value
+                path.write_text(json.dumps(raw), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "min_confidence"):
+                    load_camera_config(path)
+
     def test_earbud_camera_config_loads_properly(self) -> None:
         config = load_camera_config(ROOT / "configs" / "camera_earbud_config.json")
         self.assertEqual(config.action_map["open_case"], "open_case")

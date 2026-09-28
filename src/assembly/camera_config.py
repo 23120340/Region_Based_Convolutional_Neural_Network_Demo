@@ -13,6 +13,7 @@ class VisionClass:
     prompt: str
     action: str | None
     color_bgr: tuple[int, int, int]
+    min_confidence: float | None = None
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,14 @@ class CameraConfig:
     def action_map(self) -> dict[str, str]:
         return {item.label: item.action for item in self.classes if item.action is not None}
 
+    def accepts_detection(self, label: str, confidence: float) -> bool:
+        """The global floor is inclusive; an optional class gate is strict."""
+        vision_class = self.label_map.get(label)
+        if vision_class is None or not confidence >= self.confidence:
+            return False
+        return (vision_class.min_confidence is None
+                or confidence > vision_class.min_confidence)
+
 
 def load_camera_config(path: str | Path) -> CameraConfig:
     with Path(path).open("r", encoding="utf-8") as file:
@@ -78,7 +87,12 @@ def load_camera_config(path: str | Path) -> CameraConfig:
             raise ValueError(f"color_bgr không hợp lệ cho {label}")
         labels.add(label)
         prompts.add(prompt)
-        classes.append(VisionClass(label, prompt, item.get("action"), color))
+        min_confidence = item.get("min_confidence")
+        if min_confidence is not None:
+            min_confidence = float(min_confidence)
+            if not 0 <= min_confidence <= 1:
+                raise ValueError(f"min_confidence phải nằm trong [0, 1] cho {label}")
+        classes.append(VisionClass(label, prompt, item.get("action"), color, min_confidence))
     if not classes:
         raise ValueError("camera_config phải có ít nhất một class")
 

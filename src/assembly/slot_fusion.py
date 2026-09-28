@@ -18,6 +18,8 @@ class SlotView:
     stable_count: int
     confirmed: bool
     box: tuple[int, int, int, int] | None
+    coverage_available: bool = True
+    empty_confidence: float | None = None
 
 
 class PairedEarbudFusionEngine(EarbudFusionEngine):
@@ -30,11 +32,15 @@ class PairedEarbudFusionEngine(EarbudFusionEngine):
 
     def __init__(
         self, *, min_detection_confidence: float = 0.5,
+        min_empty_confidence: float | None = None,
         require_closed_case: bool = True, calibration_window: int | None = None, **kwargs,
     ) -> None:
         if not 0 <= min_detection_confidence <= 1:
             raise ValueError("min_detection_confidence phải nằm trong [0, 1]")
         self.min_detection_confidence = min_detection_confidence
+        if min_empty_confidence is not None and not 0 <= min_empty_confidence <= 1:
+            raise ValueError("min_empty_confidence phải nằm trong [0, 1]")
+        self.min_empty_confidence = min_empty_confidence
         self.require_closed_case = require_closed_case
         self.calibration_window = calibration_window
         super().__init__(**kwargs)
@@ -69,7 +75,8 @@ class PairedEarbudFusionEngine(EarbudFusionEngine):
     def slot_views(self) -> tuple[SlotView, ...]:
         return tuple(
             SlotView(v.label, v.status, v.coverage, v.stable_count,
-                     v.label in self._confirmed_slots, v.box)
+                     v.label in self._confirmed_slots, v.box,
+                     v.coverage_available, v.empty_confidence)
             for v in self._views
         )
 
@@ -131,7 +138,10 @@ class PairedEarbudFusionEngine(EarbudFusionEngine):
         self, detections: Iterable[Detection], action_prediction: Prediction | None = None,
     ) -> EarbudFusionEvent | None:
         items = [d for d in detections
-                 if d.area > 0 and d.confidence >= self.min_detection_confidence]
+                 if d.area > 0 and d.confidence >= self.min_detection_confidence
+                 and (self.min_empty_confidence is None
+                      or _normalise_label(d.label) not in self.slot_earbud_pairs
+                      or d.confidence > self.min_empty_confidence)]
         cases = [d for d in items if _normalise_label(d.label) in self.CASE_LABELS]
         case = max(cases, key=lambda d: d.confidence) if cases else None
         labels = tuple(self.slot_earbud_pairs)
@@ -139,7 +149,7 @@ class PairedEarbudFusionEngine(EarbudFusionEngine):
             self._case_run = "unknown", 0
             self._runs.clear()
             self._empty_evidence.clear()
-            self._views = tuple(SlotView(s, "unknown", 0, 0, s in self._confirmed_slots, None)
+            self._views = tuple(SlotView(s, "unknown", 0, 0, s in self._confirmed_slots, None, False)
                                 for s in labels)
             self._last_scene = EarbudSceneState(False, False, 0, 0,
                                                self.confirmed_insertions, 0)
@@ -185,7 +195,10 @@ class PairedEarbudFusionEngine(EarbudFusionEngine):
         for s in labels:
             box = boxes[s]
             candidates = assignments[s]
-            coverage = max((self._coverage(d, box) for d in candidates), default=0.0) if box else 0.0
+            # Display geometric overlap even below the insertion threshold.
+            # Assignment/stability still use the strict rules above.
+            coverage = max((self._coverage(d, box) for d in earbuds), default=0.0) if box else 0.0
+            coverage_available = bool(box and earbuds and not closed)
             if closed:
                 status = "closed"
             elif s in ambiguous:
@@ -227,7 +240,8 @@ class PairedEarbudFusionEngine(EarbudFusionEngine):
                     stable_wrong.add(s)
                     self._unsafe_slots.add(s)
             views.append(SlotView(s, status, coverage, run, s in self._confirmed_slots,
-                                  boxes[s].box_xyxy if boxes[s] else None))
+                                  boxes[s].box_xyxy if boxes[s] else None,
+                                  coverage_available, slots[s].confidence if slots[s] else None))
         self._views = tuple(views)
         self._last_scene = EarbudSceneState(
             True, closed, len(stable_occupied), len(stable_empty), len(stable_occupied),

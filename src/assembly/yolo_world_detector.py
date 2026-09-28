@@ -85,12 +85,15 @@ class YoloWorldDetector:
             )
             if vision_class is None:
                 continue
+            score = float(confidence.item())
+            if not self.config.accepts_detection(vision_class.label, score):
+                continue
             coords = tuple(int(round(value)) for value in xyxy.detach().cpu().tolist())
             detections.append(
                 Detection(
                     label=vision_class.label,
                     prompt=model_name,
-                    confidence=float(confidence.item()),
+                    confidence=score,
                     box_xyxy=coords,
                 )
             )

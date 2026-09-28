@@ -50,12 +50,14 @@
     },
     {
       "label": "empty_left",
+      "min_confidence": 0.5,
       "prompt": "empty_left",
       "action": null,
       "color_bgr": [64, 176, 255]
     },
     {
       "label": "empty_right",
+      "min_confidence": 0.5,
       "prompt": "empty_right",
       "action": null,
       "color_bgr": [80, 180, 255]

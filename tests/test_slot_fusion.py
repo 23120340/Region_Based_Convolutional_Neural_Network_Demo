@@ -75,6 +75,49 @@ class SlotFusionTests(unittest.TestCase):
         self.assertIsNone(self.feed([CASE, LEFT, RE], "insert_first_earbud", 0.5))
         self.assertIsNotNone(self.feed([CASE, LEFT, RE], "insert_first_earbud", 0.5001))
 
+    def test_empty_at_or_below_half_does_not_calibrate_or_trigger_removal(self):
+        self.engine.min_detection_confidence = 0.35
+        self.engine.min_empty_confidence = 0.5
+        weak = box("empty_right", RIGHT.box_xyxy, 0.5)
+        self.assertIsNone(self.feed([CASE, LEFT, weak], "open_case", count=6))
+        self.assertNotIn("empty_right", self.engine._anchors)
+        self.opened()
+        self.feed([CASE, LEFT, RE], "insert_first_earbud")
+        self.assertIsNone(self.feed([CASE, LEFT, weak], count=6))
+        self.assertEqual(self.engine.confirmed_insertions, 1)
+        strong = box("empty_right", RIGHT.box_xyxy, 0.5001)
+        self.assertEqual(self.feed([CASE, LEFT, strong]).action, "remove_earbud_to_zero")
+
+    def test_empty_gate_does_not_reject_earbud_above_global_floor(self):
+        self.engine.min_detection_confidence = 0.35
+        self.engine.min_empty_confidence = 0.5
+        self.opened()
+        modest = box("right_earbud", RE.box_xyxy, 0.36)
+        self.assertEqual(self.feed([CASE, LEFT, modest], "insert_first_earbud").action,
+                         "insert_first_earbud")
+
+    def test_partial_overlap_is_displayed_without_confirming_insertion(self):
+        self.opened()
+        partial = box("right_earbud", (125, 65, 140, 90))
+        self.assertIsNone(self.feed([CASE, LEFT, partial], "insert_first_earbud"))
+        slot = next(v for v in self.engine.slot_views if v.label == "empty_right")
+        self.assertAlmostEqual(slot.coverage, 375 / 3500)
+        self.assertTrue(slot.coverage_available)
+        self.assertEqual(self.engine.confirmed_insertions, 0)
+
+    def test_missing_earbud_is_unavailable_not_a_measured_zero(self):
+        self.opened()
+        self.feed([CASE, LEFT, RIGHT], "idle")
+        self.assertTrue(all(not v.coverage_available for v in self.engine.slot_views))
+        self.assertEqual(self.engine.slot_views[0].empty_confidence, LEFT.confidence)
+        self.feed([], "idle")
+        self.assertTrue(all(not v.coverage_available and v.box is None for v in self.engine.slot_views))
+
+    def test_invalid_empty_threshold_is_rejected(self):
+        for value in (-0.1, 1.1, float("nan")):
+            with self.assertRaisesRegex(ValueError, "min_empty_confidence"):
+                PairedEarbudFusionEngine(min_empty_confidence=value)
+
     def test_missing_slot_alone_does_not_insert(self):
         self.opened()
         self.assertIsNone(self.feed([CASE], "insert_first_earbud", count=10))
@@ -241,7 +284,14 @@ class SlotFusionTests(unittest.TestCase):
         camera = load_camera_config(project.camera_config)
         self.assertEqual(engine.min_detection_confidence, camera.confidence)
         self.assertEqual(engine.min_action_confidence, 0.5)
-        weak = [box(d.label, d.box_xyxy, 0.4) for d in [CASE, LEFT, RIGHT]]
+        self.assertEqual(engine.min_empty_confidence, 0.5)
+        for label in ("empty_left", "empty_right"):
+            self.assertEqual(engine.min_empty_confidence, camera.label_map[label].min_confidence)
+        weak_slots = [box(d.label, d.box_xyxy, 0.4) for d in [CASE, LEFT, RIGHT]]
+        for _ in range(3):
+            self.assertIsNone(engine.update(weak_slots, Prediction("open_case", 0.95)))
+        # The case still uses the global 0.35 floor, but empty slots need >0.5.
+        weak = [box("open_case", CASE.box_xyxy, 0.4), LEFT, RIGHT]
         for _ in range(3):
             event = engine.update(weak, Prediction("open_case", 0.5))
         self.assertIsNone(event)

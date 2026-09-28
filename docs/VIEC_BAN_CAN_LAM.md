@@ -1,5 +1,17 @@
 # Việc bạn cần làm tiếp theo
 
+## Ưu tiên hiện tại: empty > 0,5 và camera điện thoại — 28/09/2026
+
+Đọc [hướng dẫn ngưỡng empty và camera USB](NGUONG_EMPTY_VA_CAMERA_DIEN_THOAI.md).
+
+- Lần sửa này áp dụng trên nhánh `main` đang được checkout ở ổ G; không đổi model hay taxonomy sang bốn nhãn. Đừng nhầm nhãn LSTM với hai bước lắp của FSM.
+- Đã đặt riêng `empty_left/right` > 0,5 ở detector và Fusion. Các lớp tai/hộp vẫn dùng ngưỡng YOLO chung 0,35; hành động vẫn > 0,5.
+- Độ phủ là diện tích giao bbox tai/khe chia diện tích khe, không phải confidence hay xác suất khe trống. Thiếu bbox tai/khe sẽ hiển thị rõ, không giả lập 0%; độ phủ dưới 40% vẫn hiện nhưng chưa được xác nhận.
+- Thoát cửa sổ realtime cũ rồi chạy lại. Kiểm tra đường dẫn YOLO/LSTM và danh sách actions được in khi khởi động.
+- Nếu dùng điện thoại: bật chế độ webcam USB nếu máy hỗ trợ, hoặc thiết lập DroidCam app + PC client. Cắm cáp đơn thuần không bảo đảm Windows có webcam.
+- Dò chỉ số bằng `python scripts/run_hybrid.py --list-cameras --max-camera-index 8`. Chỉ dùng `--source 3` nếu camera điện thoại thực sự là số 3.
+- Kiểm thử: empty 0,50 không được nhận; empty 0,51 có thể được nhận; tai đã nằm trong hộp cần bbox tai đúng bên và độ phủ ổn định. Bbox empty nhận sai ở 0,69–0,90 vẫn vượt ngưỡng mới: cần bổ sung/gán lại ảnh và fine-tune YOLO, không ép PASS bằng LSTM.
+
 ## Tách nhánh main / insert_earbud — 28/09/2026
 
 Main giữ năm nhãn first/second và các sửa UI/runtime; `feature/merge-insert-earbud-action` dùng bốn nhãn với insert chung. Hai model đã tách thư mục. Đọc [hướng dẫn hai nhánh](HUONG_DAN_HAI_NHANH_EARBUD.md) trước khi train hoặc đổi nhánh. Main được tái train vì weights năm lớp cũ đã bị ghi đè; bản bốn lớp đang có được giữ nguyên.
