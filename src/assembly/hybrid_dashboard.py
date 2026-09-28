@@ -9,6 +9,18 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+# Clickable areas in dashboard (canvas) coordinates: x1, y1, x2, y2.
+PHONE_BUTTON = (1080, 866, 1420, 897)
+PHONE_NEXT_ADDRESS = (1000, 604, 1400, 638)
+PHONE_NEW_SESSION = (996, 652, 1130, 694)
+PHONE_DISCONNECT = (1140, 652, 1290, 694)
+PHONE_CLOSE_PANEL = (1300, 652, 1404, 694)
+_PHONE_STATE_TEXT = {
+    "idle": "Chưa kết nối", "waiting": "Chờ quét QR", "page_opened": "Đã mở trang, chờ camera",
+    "connecting": "Đang kết nối", "connected": "Connected", "disconnected": "Disconnected",
+    "expired": "QR hết hạn", "closed": "Disconnected", "error": "Lỗi",
+}
+
 
 @lru_cache(maxsize=12)
 def _font(size: int):
@@ -27,6 +39,7 @@ def draw_dashboard(
     action_threshold: float, outcome=None,
     embedding_count: int = 0, sequence_length: int = 16,
     yolo_ms: float = 0, vit_ms: float = 0, fps: float = 0, mirror: bool = False,
+    phone=None,
 ):
     """Render a fixed logical canvas, resized only by the display window."""
     canvas = np.full((900, 1440, 3), (20, 17, 14), dtype=np.uint8)
@@ -110,5 +123,98 @@ def draw_dashboard(
     if outcome is not None:
         wrapped((36, 833), f"Lần gần nhất: {outcome.type} · {outcome.action}",
                 1355, 17, red if violation else green, 1)
-    text((24, 873), "F: toàn màn hình   |   R: reset   |   Q / Esc: thoát", 17, muted)
+    text((24, 873), "F: toàn màn hình  |  R: reset  |  P: camera điện thoại  |  Q / Esc: thoát", 17, muted)
+    if phone is not None:
+        _draw_phone(pil, draw, text, wrapped, phone, (white, muted, green, amber, red))
     return cv2.cvtColor(np.asarray(pil), cv2.COLOR_RGB2BGR)
+
+
+def _inside(rect, x, y) -> bool:
+    return rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]
+
+
+def phone_hit_test(x: int, y: int, view) -> str | None:
+    """Map a click on the dashboard canvas to a phone-camera action."""
+    from .phone_camera_ui import CLOSE_PANEL, DISCONNECT, NEW_SESSION, NEXT_ADDRESS, OPEN
+
+    if _inside(PHONE_BUTTON, x, y):
+        return OPEN
+    if not view.panel_open:
+        return None
+    status = view.status
+    if _inside(PHONE_NEW_SESSION, x, y):
+        return NEW_SESSION
+    if _inside(PHONE_DISCONNECT, x, y) and status is not None:
+        return DISCONNECT
+    if _inside(PHONE_CLOSE_PANEL, x, y):
+        return CLOSE_PANEL
+    if _inside(PHONE_NEXT_ADDRESS, x, y) and status is not None and status.address_count > 1:
+        return NEXT_ADDRESS
+    return None
+
+
+def _phone_label(view) -> tuple[str, str]:
+    status = view.status
+    if status is None:
+        return ("Lỗi" if view.error else "Chưa kết nối"), ("red" if view.error else "muted")
+    if status.connected:
+        return f"Connected · {status.fps:.0f} FPS", "green"
+    label = _PHONE_STATE_TEXT.get(status.state, status.state)
+    if status.state in {"disconnected", "closed", "expired", "error"}:
+        return label, "red"
+    return label, ("muted" if status.state == "idle" else "amber")
+
+
+def _draw_phone(pil, draw, text, wrapped, view, colors) -> None:
+    white, muted, green, amber, red = colors
+    palette = {"white": white, "muted": muted, "green": green, "amber": amber, "red": red}
+    label, color_name = _phone_label(view)
+    color = palette[color_name]
+    source = {"phone": "điện thoại", "local": "camera PC", "placeholder": "chờ điện thoại"}
+    text((890, 61), f"Nguồn: {source.get(view.source_kind, view.source_kind)}  •  ĐT: {label}", 18, color)
+
+    def button(rect, caption, fill, size=18):
+        draw.rounded_rectangle(rect, radius=9, fill=fill)
+        width = draw.textlength(caption, font=_font(size))
+        text((rect[0] + (rect[2] - rect[0] - width) / 2, rect[1] + (rect[3] - rect[1] - size) / 2 - 2),
+             caption, size, white)
+
+    button(PHONE_BUTTON, "Kết nối camera điện thoại", (38, 99, 196) if not view.panel_open else (52, 65, 90))
+    if not view.panel_open:
+        return
+
+    status = view.status
+    draw.rounded_rectangle((980, 94, 1420, 704), radius=14, fill=(22, 30, 44), outline=(61, 139, 253), width=2)
+    text((1000, 108), "CAMERA ĐIỆN THOẠI", 23)
+    text((1000, 140), label, 20, color)
+    if view.error:
+        wrapped((1000, 180), view.error, 396, 18, red, 8)
+    elif status is not None and status.connected:
+        text((1000, 200), "ĐÃ KẾT NỐI", 34, green)
+        wrapped((1000, 250), f"Truyền: {status.transport}", 396, 18, muted, 1)
+        if status.frame_size:
+            text((1000, 280), f"Khung hình: {status.frame_size[0]}×{status.frame_size[1]}", 18, muted)
+        wrapped((1000, 310), status.device, 396, 15, muted, 3)
+    elif view.qr is not None and status is not None and status.url:
+        qr = view.qr
+        pil.paste(Image.fromarray(cv2.cvtColor(qr, cv2.COLOR_BGR2RGB)), (1060, 172))
+        wrapped((1000, 460), status.url.split("#", 1)[0], 400, 14, muted, 2)
+        if status.expires_in is not None:
+            text((1000, 500), f"QR hết hạn sau {int(status.expires_in // 60)}:{int(status.expires_in % 60):02d}",
+                 16, muted)
+    elif status is not None and status.url:
+        wrapped((1000, 180), "Thiếu thư viện segno để vẽ QR. Mở link sau trên điện thoại:", 396, 17, amber, 2)
+        wrapped((1000, 240), status.url, 396, 15, white, 6)
+    elif status is not None:
+        wrapped((1000, 180), status.message or "Nhấn \"QR mới\" để tạo phiên kết nối.", 396, 19, white, 6)
+    if status is not None and not view.error:
+        hint = status.message if not status.connected and status.url else ""
+        if status.warnings:
+            hint = status.warnings[0]
+        if hint:
+            wrapped((1000, 524), hint, 396, 15, amber if status.warnings else muted, 3)
+        if status.address_count > 1 and not status.connected:
+            button(PHONE_NEXT_ADDRESS, f"Đổi IP ({status.address}) nếu ĐT không mở được", (52, 65, 90), 15)
+    button(PHONE_NEW_SESSION, "QR mới (N)", (38, 99, 196), 17)
+    button(PHONE_DISCONNECT, "Ngắt (D)", (179, 48, 61), 17)
+    button(PHONE_CLOSE_PANEL, "Đóng (P)", (52, 65, 90), 17)

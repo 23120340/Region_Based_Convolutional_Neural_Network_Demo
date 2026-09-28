@@ -81,6 +81,10 @@ python scripts/run_earbud.py --mode camera --source 1 --auto-advance
 
 Trong cửa sổ: `C` đổi camera, `S` chụp ảnh có overlay, `R` reset, `Q`/`Esc` thoát. Ảnh chụp được lưu tại `artifacts/screenshots/`.
 
+### Camera điện thoại qua QR
+
+Trong cửa sổ `run_hybrid`, nhấn nút **Kết nối camera điện thoại** (hoặc phím `P`), quét QR bằng điện thoại cùng Wi-Fi, cho phép camera. Video được gửi bằng WebRTC (dự phòng WebSocket) và đi thẳng vào pipeline hiện tại; dashboard hiện `Connected`/`Disconnected`. Chỉ dùng điện thoại: `.\run_hybrid.ps1 -Source phone`. Chi tiết, bảo mật phiên và xử lý khác mạng: [PHONE_CAMERA.md](docs/PHONE_CAMERA.md).
+
 Runtime sẽ dừng với thông báo rõ nếu checkpoint geometry v2 chưa có. Xem [hướng dẫn camera](docs/CAMERA_REALTIME.md) và [việc bạn cần làm](docs/VIEC_BAN_CAN_LAM.md).
 
 ## Pipeline action v2
@@ -136,5 +140,6 @@ Dataset, video, feature và checkpoint lớn bị loại khỏi Git bởi `.giti
 - [Đánh giá và train dataset RNN trái/phải](docs/DANH_GIA_DATASET_RNN.md)
 - [Năm bước train action v2](docs/LSTM_Training_Guide.md)
 - [Chạy camera và thu ảnh YOLO](docs/CAMERA_REALTIME.md)
+- [Camera điện thoại qua QR](docs/PHONE_CAMERA.md)
 - [Thiết kế Hybrid](docs/HYBRID_VIT_LSTM_ASSEMBLY_PLAN.md)
 - [Tóm tắt hợp nhất repo](docs/TOM_TAT_HOP_NHAT_REPO_20260922.md)

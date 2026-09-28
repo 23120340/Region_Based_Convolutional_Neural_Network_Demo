@@ -8,6 +8,7 @@
 4. [LSTM_Training_Guide.md](LSTM_Training_Guide.md) — năm bước Annotation → Split → DINOv2 → BiLSTM → Evaluation.
 5. [KET_QUA_TRAIN_LSTM_PILOT_20260923.md](KET_QUA_TRAIN_LSTM_PILOT_20260923.md) — kết quả train/test pilot năm hành động và giới hạn hiện tại.
 6. [CAMERA_REALTIME.md](CAMERA_REALTIME.md) — chọn camera, chụp ảnh detection và chạy realtime.
+   - [PHONE_CAMERA.md](PHONE_CAMERA.md) — dùng camera điện thoại qua QR (WebRTC/WebSocket), trạng thái Connected/Disconnected.
 7. [VIEC_BAN_CAN_LAM_GEOMETRY.md](VIEC_BAN_CAN_LAM_GEOMETRY.md) — quy tắc bounding box sáu lớp geometry trái/phải.
 8. [HYBRID_VIT_LSTM_ASSEMBLY_PLAN.md](HYBRID_VIT_LSTM_ASSEMBLY_PLAN.md) — kiến trúc và cách mở rộng.
 9. [ACTION_PIPELINE_V2.md](ACTION_PIPELINE_V2.md) — lệnh tóm tắt cho action v2.

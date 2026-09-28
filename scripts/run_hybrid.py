@@ -16,12 +16,15 @@ import cv2
 
 from assembly.action_config import load_action_model_config
 from assembly.camera_config import load_camera_config
+from assembly.camera_input import LOCAL, PHONE_SOURCE, PLACEHOLDER, CameraInputRouter, is_phone_source
 from assembly.config import load_config
 from assembly.fsm import ConfigurableAssemblyTracker, FsmOutcome
-from assembly.hybrid_dashboard import draw_dashboard
+from assembly.hybrid_dashboard import draw_dashboard, phone_hit_test
 from assembly.model_contract import Prediction
 from assembly.models.vit_lstm_recognizer import ViTLstmActionRecognizer
 from assembly.monitor import AssemblyMonitor, JsonlEventLogger
+from assembly.phone_camera import PhoneCameraServer
+from assembly.phone_camera_ui import PhoneCameraController
 from assembly.project_config import build_fusion_engine, load_project_config
 from assembly.smoother import TemporalDebouncer
 from assembly.vision import Detection
@@ -48,6 +51,8 @@ def _input_path(value: str | Path) -> Path:
 
 
 def _source(value: str) -> int | str:
+    if is_phone_source(value):
+        return PHONE_SOURCE
     if value.isdigit():
         return int(value)
     if "://" in value:
@@ -105,7 +110,8 @@ def build_parser(default_project: Path = DEFAULT_PROJECT) -> argparse.ArgumentPa
         description="Runtime dùng lại được: YOLO + ViT-BiLSTM + Fusion Engine + FSM"
     )
     parser.add_argument("--project", type=Path, default=default_project, help="Project profile JSON")
-    parser.add_argument("--source", default="0", help="Camera index hoặc đường dẫn video")
+    parser.add_argument("--source", default="0",
+                        help="Camera index, đường dẫn video hoặc 'phone' (chỉ dùng camera điện thoại qua QR)")
     parser.add_argument("--camera-config", type=Path, default=None)
     parser.add_argument("--fsm-config", type=Path, default=None)
     parser.add_argument("--action-config", type=Path, default=None)
@@ -125,6 +131,21 @@ def build_parser(default_project: Path = DEFAULT_PROJECT) -> argparse.ArgumentPa
     parser.add_argument("--fullscreen", action="store_true")
     parser.add_argument("--headless", action="store_true", help="Đọc video, ghi log, không mở cửa sổ")
     parser.add_argument("--max-frames", type=int, default=None, help=argparse.SUPPRESS)
+    phone = parser.add_argument_group("camera điện thoại (nút 'Kết nối camera điện thoại' / phím P)")
+    phone.add_argument("--phone-port", type=int, default=8443,
+                       help="Cổng HTTPS cho trang camera; bận thì tự thử 9 cổng kế tiếp")
+    phone.add_argument("--phone-host", default=None,
+                       help="Ép IP/hostname đưa vào QR; mặc định tự dò IP LAN của máy")
+    phone.add_argument("--phone-public-url", default=None,
+                       help="URL HTTPS công khai (tunnel) khi điện thoại khác mạng với PC")
+    phone.add_argument("--phone-transport", choices=["auto", "webrtc", "websocket"], default="auto",
+                       help="auto: WebRTC, lỗi thì WebSocket JPEG")
+    phone.add_argument("--phone-ice-server", action="append", default=[],
+                       help="STUN/TURN URL cho WebRTC khác mạng, ví dụ stun:stun.l.google.com:19302")
+    phone.add_argument("--phone-cert", type=Path, default=None, help="Chứng chỉ TLS tin cậy (PEM)")
+    phone.add_argument("--phone-key", type=Path, default=None, help="Private key của --phone-cert")
+    phone.add_argument("--phone-session-ttl", type=float, default=600.0,
+                       help="Số giây QR còn hiệu lực trước khi có điện thoại kết nối")
     return parser
 
 
@@ -145,6 +166,10 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
         parser.error("Kích thước cửa sổ tối thiểu 640x480")
     if args.action_confidence is not None and not 0 <= args.action_confidence <= 1:
         parser.error("--action-confidence phải nằm trong [0, 1]")
+    if not 0 <= args.phone_port <= 65535:
+        parser.error("--phone-port phải nằm trong [0, 65535]")
+    if args.phone_session_ttl <= 0:
+        parser.error("--phone-session-ttl phải > 0")
 
     project = load_project_config(args.project, ROOT)
     camera_config_path = _input_path(args.camera_config or project.camera_config)
@@ -210,14 +235,34 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
         )
 
     source = _source(args.source)
-    backend = cv2.CAP_DSHOW if isinstance(source, int) and sys.platform == "win32" else cv2.CAP_ANY
-    capture = cv2.VideoCapture(source, backend)
-    if not capture.isOpened():
-        raise SystemExit(f"Không mở được camera/video: {source!r}")
-    if isinstance(source, int):
-        capture.set(cv2.CAP_PROP_FRAME_WIDTH, camera_config.capture_width)
-        capture.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_config.capture_height)
-        capture.set(cv2.CAP_PROP_BUFFERSIZE, camera_config.capture_buffer_size)
+    phone_only = source == PHONE_SOURCE
+    local_capture = None
+    if not phone_only:
+        backend = cv2.CAP_DSHOW if isinstance(source, int) and sys.platform == "win32" else cv2.CAP_ANY
+        local_capture = cv2.VideoCapture(source, backend)
+        if not local_capture.isOpened():
+            raise SystemExit(f"Không mở được camera/video: {source!r}")
+        if isinstance(source, int):
+            local_capture.set(cv2.CAP_PROP_FRAME_WIDTH, camera_config.capture_width)
+            local_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_config.capture_height)
+            local_capture.set(cv2.CAP_PROP_BUFFERSIZE, camera_config.capture_buffer_size)
+    # Camera input adapter: phone frames replace the local source while the
+    # phone streams; the pipeline below reads it like any cv2 capture.
+    capture = CameraInputRouter(
+        local_capture, placeholder_size=(camera_config.capture_width, camera_config.capture_height))
+    phone = PhoneCameraController(capture, lambda: PhoneCameraServer(
+        port=args.phone_port,
+        host=args.phone_host,
+        public_url=args.phone_public_url,
+        transport=args.phone_transport,
+        cert_file=args.phone_cert,
+        key_file=args.phone_key,
+        ice_servers=tuple(args.phone_ice_server),
+        session_ttl=args.phone_session_ttl,
+        target_size=(camera_config.capture_width, camera_config.capture_height),
+        target_fps=camera_config.capture_fps,
+    ))
+    source_generation = capture.generation
 
     sequence_length = action_config.temporal.sequence_length
     embeddings = deque(maxlen=sequence_length)
@@ -228,13 +273,14 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
     detections: list[Detection] = []
     outcome: FsmOutcome | None = None
     frame_index = 0
+    local_frame_index = 0  # video clock; phone frames must not advance it
     yolo_ms = 0.0
     vit_ms = 0.0
     previous_frame_time = time.perf_counter()
     display_fps = 0.0
     fullscreen = args.fullscreen
     action_threshold = fusion.min_action_confidence
-    file_fps = capture.get(cv2.CAP_PROP_FPS) if isinstance(source, str) else 0.0
+    file_fps = capture.get(cv2.CAP_PROP_FPS) if isinstance(source, str) and not phone_only else 0.0
     video_file = isinstance(source, str) and Path(source).is_file()
     # For replay, sample by video time rather than CPU processing speed.
     if video_file:
@@ -252,22 +298,42 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
             cv2.resizeWindow(project.display_name, args.window_width, args.window_height)
             if fullscreen:
                 cv2.setWindowProperty(project.display_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+            cv2.setMouseCallback(project.display_name, phone.on_mouse)
+        if phone_only:
+            phone.open()
         while True:
             ok, frame = capture.read()
             if not ok:
                 break
             frame_index += 1
-            if not args.no_mirror and isinstance(source, int):
+            if capture.generation != source_generation:
+                # Slot anchors and the temporal window belong to one viewpoint.
+                source_generation = capture.generation
+                outcome = monitor.reset()
+                fusion.reset()
+                embeddings.clear()
+                detections = []
+                latest_action = None
+                latest_action_time = 0.0
+                next_sample_time = float("-inf")
+                print(f"[INFO] Nguồn camera -> {capture.kind}; đã bắt đầu lượt mới.")
+            local_live = capture.kind == LOCAL and isinstance(source, int)
+            video_clock = video_file and capture.kind == LOCAL
+            if capture.kind == LOCAL:
+                local_frame_index += 1
+            if not args.no_mirror and local_live:
                 frame = cv2.flip(frame, 1)
             height, width = frame.shape[:2]
             wall_now = time.perf_counter()
             frame_duration = max(wall_now - previous_frame_time, 1e-6)
             display_fps = 0.9 * display_fps + 0.1 / frame_duration
             previous_frame_time = wall_now
-            now = ((frame_index - 1) / file_fps if file_fps > 0 else capture.get(cv2.CAP_PROP_POS_MSEC) / 1000
-                   ) if video_file else wall_now
+            now = ((local_frame_index - 1) / file_fps if file_fps > 0 else capture.get(cv2.CAP_PROP_POS_MSEC) / 1000
+                   ) if video_clock else wall_now
+            # Nothing to analyse while waiting for the phone (placeholder frame).
+            analyse = capture.kind != PLACEHOLDER
 
-            if now + 1e-8 >= next_sample_time:
+            if analyse and now + 1e-8 >= next_sample_time:
                 started = time.perf_counter()
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 embeddings.append(recognizer.encode_frame(rgb))
@@ -277,7 +343,7 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
                 vit_ms = (time.perf_counter() - started) * 1000
                 next_sample_time = now + sample_interval
 
-            if frame_index % yolo_every == 0:
+            if analyse and frame_index % yolo_every == 0:
                 started = time.perf_counter()
                 detections = detector.predict(frame)
                 yolo_ms = (time.perf_counter() - started) * 1000
@@ -303,6 +369,7 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
                         latest_action = None
                         latest_action_time = 0.0
 
+            phone_view = phone.poll(phone_hit_test)
             if args.headless:
                 if args.max_frames is not None and frame_index >= args.max_frames:
                     break
@@ -320,12 +387,13 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
                 action_threshold=action_threshold, outcome=outcome,
                 embedding_count=len(embeddings), sequence_length=sequence_length,
                 yolo_ms=yolo_ms, vit_ms=vit_ms, fps=display_fps,
-                mirror=not args.no_mirror and isinstance(source, int),
+                mirror=not args.no_mirror and local_live, phone=phone_view,
             )
             cv2.imshow(project.display_name, screen)
             key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), 27):
                 break
+            phone.handle_key(key)
             if key in (ord("f"), ord("F")):
                 fullscreen = not fullscreen
                 cv2.setWindowProperty(project.display_name, cv2.WND_PROP_FULLSCREEN,
@@ -343,6 +411,7 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
                 break
     finally:
         capture.release()
+        phone.close()
         if not args.headless:
             cv2.destroyAllWindows()
     return 0
