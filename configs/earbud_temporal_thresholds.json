@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "scheduler": {
+    "target_embedding_fps": 10.0,
+    "telemetry_horizon_s": 3.0
+  },
+  "confidence": {
+    "display_min": 0.5,
+    "case_min": 0.5,
+    "occupied_earbud_min": 0.5,
+    "wrong_side_earbud_min": 0.58,
+    "empty_slot_min": 0.5,
+    "action_min": 0.5
+  },
+  "duration_seconds": {
+    "open_case_s": 0.3,
+    "insert_s": 0.25,
+    "wrong_side_s": 0.5,
+    "removal_s": 0.8,
+    "close_s": 0.3,
+    "unknown_arm_s": 0.15,
+    "max_gap_s": 0.35,
+    "action_latch_s": 1.0
+  },
+  "tracking": {
+    "case_iou_min": 0.15,
+    "case_center_shift_ratio": 0.6,
+    "assignment_ambiguity_margin": 0.1
+  },
+  "test_start_open": false
+}

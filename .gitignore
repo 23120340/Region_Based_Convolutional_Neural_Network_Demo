@@ -20,3 +20,4 @@ data/**/features*/
 data/features_cache/
 *.zip
 *.docx
+/tests/*.mp4

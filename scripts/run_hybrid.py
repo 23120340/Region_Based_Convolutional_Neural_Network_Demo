@@ -15,6 +15,7 @@ if str(SRC) not in sys.path:
 import cv2
 
 from assembly.action_config import load_action_model_config
+from assembly.cadence import CumulativeDeadlineScheduler, EmbeddingTelemetry
 from assembly.camera_config import load_camera_config
 from assembly.camera_input import LOCAL, PHONE_SOURCE, PLACEHOLDER, CameraInputRouter, is_phone_source
 from assembly.config import load_config
@@ -27,6 +28,7 @@ from assembly.phone_camera import PhoneCameraServer
 from assembly.phone_camera_ui import PhoneCameraController
 from assembly.project_config import build_fusion_engine, load_project_config
 from assembly.smoother import TemporalDebouncer
+from assembly.temporal_config import load_temporal_fusion_config
 from assembly.vision import Detection
 from assembly.yolo_world_detector import YoloWorldDetector
 
@@ -70,9 +72,11 @@ def _put_text(frame, text: str, origin: tuple[int, int], scale=0.55, color=(255,
     cv2.putText(frame, text, origin, cv2.FONT_HERSHEY_SIMPLEX, scale, color, 2, cv2.LINE_AA)
 
 
-def _draw_detections(frame, detections: list[Detection], camera_config) -> None:
+def _draw_detections(frame, detections: list[Detection], camera_config, min_confidence: float = 0.5) -> None:
     label_map = camera_config.label_map
     for detection in detections:
+        if detection.confidence <= min_confidence:
+            continue
         vision_class = label_map.get(detection.label)
         color = vision_class.color_bgr if vision_class is not None else (0, 255, 0)
         x1, y1, x2, y2 = detection.box_xyxy
@@ -116,14 +120,16 @@ def build_parser(default_project: Path = DEFAULT_PROJECT) -> argparse.ArgumentPa
     parser.add_argument("--fsm-config", type=Path, default=None)
     parser.add_argument("--action-config", type=Path, default=None)
     parser.add_argument("--action-model", type=Path, default=None)
+    parser.add_argument("--fusion-config", type=Path, default=None,
+                        help="Ngưỡng cadence/confidence/duration cho temporal fusion")
     parser.add_argument("--event-log", type=Path, default=None)
     parser.add_argument("--yolo-model", type=Path, default=None)
     parser.add_argument("--device", default=None, help="cpu, cuda hoặc GPU index")
-    parser.add_argument("--sample-fps", type=float, default=None)
     parser.add_argument("--yolo-every", type=int, default=None)
-    parser.add_argument("--stable-frames", type=int, default=None)
     parser.add_argument("--action-confidence", type=float, default=None)
     parser.add_argument("--action-ttl", type=float, default=1.5)
+    parser.add_argument("--test-start-open", action="store_true",
+                        help="Test-only: lấy hộp đã mở làm baseline, không giả lập PASS open_case")
     parser.add_argument("--allow-download", action="store_true")
     parser.add_argument("--no-mirror", action="store_true")
     parser.add_argument("--window-width", type=int, default=1440)
@@ -154,12 +160,8 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
     parser = build_parser(default_project)
     args = parser.parse_args()
 
-    if args.sample_fps is not None and args.sample_fps <= 0:
-        parser.error("--sample-fps phải > 0")
     if args.yolo_every is not None and args.yolo_every < 1:
         parser.error("--yolo-every phải >= 1")
-    if args.stable_frames is not None and args.stable_frames < 1:
-        parser.error("--stable-frames phải >= 1")
     if args.action_ttl <= 0:
         parser.error("--action-ttl phải > 0")
     if args.window_width < 640 or args.window_height < 480:
@@ -176,18 +178,24 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
     fsm_config_path = _input_path(args.fsm_config or project.fsm_config)
     action_config_path = _input_path(args.action_config or project.action_config)
     action_model_path = _input_path(args.action_model or project.action_model)
+    fusion_config_value = args.fusion_config or project.temporal_config
+    if fusion_config_value is None:
+        raise SystemExit("Project phải khai báo temporal_config hoặc dùng --fusion-config")
+    fusion_config_path = _input_path(fusion_config_value)
     event_log_path = (args.event_log or project.event_log).resolve()
     for label, path in (
         ("camera config", camera_config_path),
         ("FSM config", fsm_config_path),
         ("action config", action_config_path),
         ("action checkpoint", action_model_path),
+        ("temporal fusion config", fusion_config_path),
     ):
         if not path.is_file():
             raise SystemExit(f"Không tìm thấy {label}: {path}")
 
     camera_config = load_camera_config(camera_config_path)
     action_config = load_action_model_config(action_config_path)
+    temporal_config = load_temporal_fusion_config(fusion_config_path)
     assembly_config = load_config(fsm_config_path)
     tracker = ConfigurableAssemblyTracker(assembly_config)
     monitor = AssemblyMonitor(
@@ -197,10 +205,10 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
     )
     fusion = build_fusion_engine(
         project.fusion,
-        stable_frames=args.stable_frames,
+        temporal_config=temporal_config,
+        test_start_open=True if args.test_start_open else None,
         min_action_confidence=(args.action_confidence if args.action_confidence is not None
-                               else project.fusion.parameters.get(
-                                   "min_action_confidence", action_config.inference.min_confidence)),
+                               else temporal_config.confidence.action_min),
     )
 
     print("[INFO] Đang nạp checkpoint YOLO...", flush=True)
@@ -226,12 +234,12 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
         local_files_only=not args.allow_download,
     )
     cpu_mode = recognizer.device.type == "cpu"
-    sample_fps = args.sample_fps or (4.0 if cpu_mode else action_config.spatial.sample_fps)
-    yolo_every = args.yolo_every or (3 if cpu_mode else camera_config.infer_every_n_frames)
+    sample_fps = temporal_config.scheduler.target_embedding_fps
+    yolo_every = args.yolo_every or camera_config.infer_every_n_frames
     if cpu_mode and isinstance(_source(args.source), int):
         print(
-            "[WARN] Đang chạy YOLO và ViT bằng CPU; runtime dùng "
-            f"sample_fps={sample_fps:g}, yolo_every={yolo_every} để giảm lag."
+            "[WARN] Đang chạy YOLO và ViT bằng CPU; cadence vẫn giữ mục tiêu "
+            f"{sample_fps:g} FPS. UI sẽ hiển thị embedding FPS thực đo."
         )
 
     source = _source(args.source)
@@ -266,8 +274,9 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
 
     sequence_length = action_config.temporal.sequence_length
     embeddings = deque(maxlen=sequence_length)
-    next_sample_time = time.perf_counter()
-    sample_interval = 1.0 / sample_fps
+    cadence = CumulativeDeadlineScheduler(sample_fps)
+    telemetry = EmbeddingTelemetry(
+        sequence_length, horizon_s=temporal_config.scheduler.telemetry_horizon_s)
     latest_action: Prediction | None = None
     latest_action_time = 0.0
     detections: list[Detection] = []
@@ -284,9 +293,7 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
     video_file = isinstance(source, str) and Path(source).is_file()
     # For replay, sample by video time rather than CPU processing speed.
     if video_file:
-        sample_fps = args.sample_fps or action_config.spatial.sample_fps
-        sample_interval = 1.0 / sample_fps
-        next_sample_time = 0.0
+        cadence.reset(0.0)
     print(
         f"[INFO] Project={project.name} | device={recognizer.device} | "
         f"sample_fps={sample_fps:g} | YOLO mỗi {yolo_every} frame | action > {action_threshold:g}."
@@ -315,7 +322,8 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
                 detections = []
                 latest_action = None
                 latest_action_time = 0.0
-                next_sample_time = float("-inf")
+                cadence.reset()
+                telemetry.reset()
                 print(f"[INFO] Nguồn camera -> {capture.kind}; đã bắt đầu lượt mới.")
             local_live = capture.kind == LOCAL and isinstance(source, int)
             video_clock = video_file and capture.kind == LOCAL
@@ -333,15 +341,15 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
             # Nothing to analyse while waiting for the phone (placeholder frame).
             analyse = capture.kind != PLACEHOLDER
 
-            if analyse and now + 1e-8 >= next_sample_time:
+            if analyse and cadence.due(now):
                 started = time.perf_counter()
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 embeddings.append(recognizer.encode_frame(rgb))
+                telemetry.mark(now)
                 if len(embeddings) == sequence_length:
                     latest_action = recognizer.predict_embeddings(list(embeddings))
                     latest_action_time = now
                 vit_ms = (time.perf_counter() - started) * 1000
-                next_sample_time = now + sample_interval
 
             if analyse and frame_index % yolo_every == 0:
                 started = time.perf_counter()
@@ -359,15 +367,11 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
                     and latest_action.confidence > action_threshold
                     else None
                 )
-                event = fusion.update(zone_detections, action_evidence)
+                event = fusion.update(zone_detections, action_evidence, timestamp_s=now)
+                tracker.set_observation_state(fusion.observation_state)
                 if event is not None:
                     outcome = monitor.submit_stable_action(event.action)
                     print(f"[{outcome.type}] {event.action}: {outcome.message} | fusion={event.reason}")
-                    if outcome.type in {"PASS", "VIOLATION"}:
-                        # Old action windows must not authorize a later physical step.
-                        embeddings.clear()
-                        latest_action = None
-                        latest_action_time = 0.0
 
             phone_view = phone.poll(phone_hit_test)
             if args.headless:
@@ -376,7 +380,8 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
                 continue
             zone_box = camera_config.work_zone.to_pixels(width, height)
             cv2.rectangle(frame, zone_box[:2], zone_box[2:], (0, 210, 255), 2)
-            _draw_detections(frame, detections, camera_config)
+            _draw_detections(frame, detections, camera_config,
+                             temporal_config.confidence.display_min)
             for view in getattr(fusion, "slot_views", ()):
                 if view.box:
                     cv2.rectangle(frame, view.box[:2], view.box[2:], (255, 210, 80), 1)
@@ -387,6 +392,8 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
                 action_threshold=action_threshold, outcome=outcome,
                 embedding_count=len(embeddings), sequence_length=sequence_length,
                 yolo_ms=yolo_ms, vit_ms=vit_ms, fps=display_fps,
+                embedding_fps=telemetry.snapshot.actual_fps,
+                window_duration_s=telemetry.snapshot.window_duration_s,
                 mirror=not args.no_mirror and local_live, phone=phone_view,
             )
             cv2.imshow(project.display_name, screen)
@@ -404,6 +411,8 @@ def main(default_project: Path = DEFAULT_PROJECT) -> int:
                 outcome = monitor.reset()
                 fusion.reset()
                 embeddings.clear()
+                cadence.reset()
+                telemetry.reset()
                 latest_action = None
                 latest_action_time = 0.0
                 print("[INFO] Đã reset FSM, Fusion Engine và temporal buffer.")

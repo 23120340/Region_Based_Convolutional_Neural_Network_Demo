@@ -112,5 +112,27 @@ class FsmTests(unittest.TestCase):
         self.assertEqual(self.tracker.completed_steps, [])
 
 
+class ReliableEarbudFsmTests(unittest.TestCase):
+    def setUp(self) -> None:
+        config = load_config(ROOT / "configs/earbud_v2_fsm_config.json")
+        self.tracker = ConfigurableAssemblyTracker(config)
+
+    def test_test_baseline_transitions_as_info_without_fake_open_completion(self):
+        outcome = self.tracker.process("initialize_open_case")
+        self.assertEqual(outcome.type, "INFO")
+        self.assertEqual(self.tracker.state, "S1_CASE_READY")
+        self.assertEqual(self.tracker.completed_steps, [])
+
+    def test_unknown_is_information_not_violation(self):
+        outcome = self.tracker.process("unknown")
+        self.assertEqual(outcome.type, "INFO")
+        self.assertEqual(self.tracker.state, "WAIT_FOR_OPEN")
+
+    def test_production_open_still_required(self):
+        outcome = self.tracker.process("insert_first_earbud")
+        self.assertEqual(outcome.type, "VIOLATION")
+        self.assertEqual(self.tracker.state, "WAIT_FOR_OPEN")
+
+
 if __name__ == "__main__":
     unittest.main()

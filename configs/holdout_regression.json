@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "policy": "never_train",
+  "videos": [
+    {
+      "video_id": "insert_test_1",
+      "path": "tests/insert_test_1.mp4",
+      "sha256": "3b46cea9d3ad5d793faacabe0af7af7b845938acb4cc59311a5ad18b6ebc52a2",
+      "scenario": "existing_correct_regression"
+    },
+    {
+      "video_id": "insert_test_wrong",
+      "path": "tests/insert_test_wrong.mp4",
+      "sha256": "9475bf1b33cd7a7ad5d6560e4c6910c9f3ebca2102555123bb3c947aa7873e06",
+      "scenario": "existing_imperfect_capture_regression"
+    }
+  ],
+  "required_future_holdouts": [
+    "complete_correct_sequence_100_percent",
+    "verified_real_single_earbud_removal"
+  ]
+}

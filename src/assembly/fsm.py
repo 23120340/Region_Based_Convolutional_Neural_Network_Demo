@@ -2,8 +2,18 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+from enum import Enum
 
 from .config import AssemblyConfig
+
+
+class ObservationState(str, Enum):
+    """Perception quality is separate from workflow correctness."""
+
+    WAIT_FOR_OPEN = "WAIT_FOR_OPEN"
+    INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
+    UNKNOWN = "UNKNOWN"
+    READY = "READY"
 
 
 @dataclass(frozen=True)
@@ -31,6 +41,7 @@ class ConfigurableAssemblyTracker:
         self.completed_steps: list[str] = []
         self.cycle_id = 0
         self._last_accepted_action: str | None = None
+        self.observation_state = ObservationState.WAIT_FOR_OPEN
 
     @property
     def is_complete(self) -> bool:
@@ -50,6 +61,7 @@ class ConfigurableAssemblyTracker:
         self.state = self.config.initial_state
         self.completed_steps.clear()
         self._last_accepted_action = None
+        self.observation_state = ObservationState.WAIT_FOR_OPEN
         return self._outcome(
             "RESET",
             "reset",
@@ -61,6 +73,10 @@ class ConfigurableAssemblyTracker:
         previous = self.state
 
         if action in self.config.idle_actions:
+            if action == "unknown":
+                self.observation_state = ObservationState.UNKNOWN
+            elif action == "insufficient_evidence":
+                self.observation_state = ObservationState.INSUFFICIENT_EVIDENCE
             return self._outcome("INFO", action, previous, self.instruction)
 
         if action not in self.config.actions:
@@ -81,7 +97,20 @@ class ConfigurableAssemblyTracker:
 
         rule = self.config.states[self.state]
         allowed: dict[str, str] = rule.get("allowed", {})
+        informational: dict[str, str] = rule.get("informational", {})
         violations: dict[str, str | dict[str, str]] = rule.get("violations", {})
+
+        if action in informational:
+            if self.state in {self.config.initial_state, self.config.completed_state}:
+                self.cycle_id += 1
+                self.completed_steps.clear()
+            self.state = informational[action]
+            self._last_accepted_action = None
+            self.observation_state = ObservationState.READY
+            return self._outcome(
+                "INFO", action, previous,
+                f"Khởi tạo trạng thái quan sát cho chế độ kiểm thử. {self.instruction}",
+            )
 
         if action in allowed:
             if self.state in {self.config.initial_state, self.config.completed_state}:
@@ -90,6 +119,7 @@ class ConfigurableAssemblyTracker:
             self.state = allowed[action]
             self.completed_steps.append(action)
             self._last_accepted_action = action
+            self.observation_state = ObservationState.READY
             message = f"Đúng quy trình: {self.config.actions[action]}. {self.instruction}"
             return self._outcome("PASS", action, previous, message)
 
@@ -119,6 +149,9 @@ class ConfigurableAssemblyTracker:
             previous,
             f"Không được thực hiện {action!r} tại {self.state}; bước hợp lệ: {expected}.",
         )
+
+    def set_observation_state(self, state: ObservationState | str) -> None:
+        self.observation_state = state if isinstance(state, ObservationState) else ObservationState(state)
 
     def _restore_completed_steps(self, target_state: str) -> None:
         """Keep progress consistent after a configured violation rollback."""

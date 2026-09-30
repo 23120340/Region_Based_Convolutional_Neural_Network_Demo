@@ -56,15 +56,19 @@ class YoloWorldDetector:
             self.model = YOLO(selected_model)
 
     def predict(self, frame: Any) -> list[Detection]:
-        results = self.model.predict(
+        options = dict(
             source=frame,
             conf=self.config.confidence,
             imgsz=self.config.image_size,
             device=self.device,
-            half=self.use_half,
             max_det=self.config.max_detections,
             verbose=False,
         )
+        # New Ultralytics versions deprecate ``half=False``. Only send the
+        # option when FP16 is actually available and requested.
+        if self.use_half:
+            options["half"] = True
+        results = self.model.predict(**options)
         if not results or results[0].boxes is None:
             return []
 

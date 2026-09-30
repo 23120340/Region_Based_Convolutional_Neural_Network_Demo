@@ -30,6 +30,10 @@ class ProjectConfigTests(unittest.TestCase):
             ROOT / "configs" / "projects" / "earbud_v2.json",
             ROOT,
         )
+        self.assertEqual(
+            profile.temporal_config,
+            (ROOT / "configs" / "earbud_temporal_thresholds.json").resolve(),
+        )
         engine = build_fusion_engine(profile.fusion)
         self.assertIsInstance(engine, EarbudFusionEngine)
         self.assertEqual(engine.case_action, "open_case")

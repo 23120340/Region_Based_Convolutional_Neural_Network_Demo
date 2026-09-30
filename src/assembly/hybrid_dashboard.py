@@ -39,6 +39,7 @@ def draw_dashboard(
     action_threshold: float, outcome=None,
     embedding_count: int = 0, sequence_length: int = 16,
     yolo_ms: float = 0, vit_ms: float = 0, fps: float = 0, mirror: bool = False,
+    embedding_fps: float = 0, window_duration_s: float = 0,
     phone=None,
 ):
     """Render a fixed logical canvas, resized only by the display window."""
@@ -76,8 +77,8 @@ def draw_dashboard(
 
     text((24, 17), "GIÁM SÁT LẮP TAI NGHE", 30)
     text((650, 26), f"YOLO + DINOv2 + BiLSTM  |  Đã lắp {fusion.confirmed_insertions}/2", 22, green)
-    text((24, 61), f"{fps:.1f} FPS  •  YOLO {yolo_ms:.0f} ms  •  DINO/LSTM {vit_ms:.0f} ms", 18, muted)
-    text((720, 61), f"Mirror: {'ON' if mirror else 'OFF'}", 18, muted)
+    text((24, 61), f"UI {fps:.1f} FPS  •  Embedding {embedding_fps:.1f}/10 FPS  •  Window {window_duration_s:.2f}s", 18, muted)
+    text((720, 61), f"YOLO {yolo_ms:.0f} ms  •  DINO/LSTM {vit_ms:.0f} ms  •  Mirror: {'ON' if mirror else 'OFF'}", 16, muted)
     draw.rounded_rectangle((980, 94, 1420, 704), radius=14, fill=(26, 35, 49))
     text((1000, 110), "QUY TRÌNH", 23)
     for i, step in enumerate(tracker.config.workflow):
@@ -96,10 +97,13 @@ def draw_dashboard(
         side = "TRÁI" if "left" in view.label else "PHẢI"
         color = red if view.status == "wrong_side" else green if view.confirmed else amber
         text((1000, top), f"KHE {side}: {statuses.get(view.status, view.status)}", 21, color)
-        stable = min(view.stable_count, fusion.stable_frames)
-        text((1000, top+32), f"Phủ khe {view.coverage:.0%}  •  Ổn định {stable}/{fusion.stable_frames}", 18, muted)
+        text((1000, top+32),
+             f"Phủ khe {view.coverage:.0%}  •  Bằng chứng {view.evidence_seconds:.2f}/{view.required_seconds:.2f}s",
+             17, muted)
         text((1000, top+60), "Đã xác nhận" if view.confirmed else "Chưa xác nhận lắp", 18, color)
-    wrapped((1000, 611), f"FSM: {tracker.state}", 395, 17, muted, 2)
+    observation = getattr(tracker, "observation_state", "UNKNOWN")
+    observation = getattr(observation, "value", observation)
+    wrapped((1000, 611), f"FSM: {tracker.state} • Quan sát: {observation}", 395, 17, muted, 2)
     text((1000, 673), "R: lượt mới / đặt lại", 18, muted)
 
     if prediction is None:

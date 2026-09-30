@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "spatial": {
+    "backbone": "facebook/dinov2-small",
+    "embedding_dim": 384,
+    "sample_fps": 10.0,
+    "freeze": true
+  },
+  "temporal": {
+    "sequence_length": 16,
+    "window_stride": 4,
+    "hidden_dim": 256,
+    "num_layers": 2,
+    "bidirectional": true,
+    "head_dim": 128,
+    "dropout": 0.3
+  },
+  "training": {
+    "batch_size": 16,
+    "epochs": 15,
+    "learning_rate": 0.001,
+    "weight_decay": 0.0001,
+    "seed": 42
+  },
+  "inference": {
+    "min_confidence": 0.5
+  },
+  "actions": [
+    "idle",
+    "open_case",
+    "insert_earbud",
+    "close_case"
+  ]
+}

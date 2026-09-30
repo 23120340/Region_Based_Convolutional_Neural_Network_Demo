@@ -1,11 +1,14 @@
 {
   "schema_version": 1,
   "project": "earbud_two_step_fusion_v2",
-  "initial_state": "S0_IDLE",
+  "initial_state": "WAIT_FOR_OPEN",
   "completed_state": "S4_COMPLETED",
-  "idle_actions": ["idle", "uncertain"],
+  "idle_actions": ["idle", "uncertain", "unknown", "insufficient_evidence"],
   "actions": {
     "idle": "Đang chờ",
+    "unknown": "Không quan sát rõ vùng thao tác",
+    "insufficient_evidence": "Chưa đủ bằng chứng ổn định",
+    "initialize_open_case": "Khởi tạo hộp đã mở cho chế độ kiểm thử",
     "open_case": "Mở hộp sạc",
     "insert_first_earbud": "Lắp tai nghe thứ nhất",
     "insert_second_earbud": "Lắp tai nghe thứ hai",
@@ -21,9 +24,10 @@
     {"state": "S4_COMPLETED", "action": "close_case", "label": "Đóng nắp hộp sạc"}
   ],
   "states": {
-    "S0_IDLE": {
-      "message": "Hãy đặt hộp sạc mở nắp vào vùng thao tác.",
+    "WAIT_FOR_OPEN": {
+      "message": "Đang chờ quan sát hành động mở hộp; hộp đóng lúc khởi động không phải vi phạm.",
       "allowed": {"open_case": "S1_CASE_READY"},
+      "informational": {"initialize_open_case": "S1_CASE_READY"},
       "violations": {
         "insert_first_earbud": "Chưa đặt hộp sạc mà đã lắp tai nghe.",
         "insert_second_earbud": "Chưa đặt hộp sạc mà đã lắp tai nghe.",
