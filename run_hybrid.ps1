@@ -3,6 +3,7 @@
 # Chay tu thu muc goc du an:
 #   cd "G:\Internship\RBCNN_Demo"
 #   .\run_hybrid.ps1
+#   .\run_hybrid.ps1 -Source phone   # chi dung camera dien thoai qua QR
 # ============================================================
 
 param(
@@ -77,6 +78,7 @@ Write-Host "Phim dieu khien trong cua so camera:" -ForegroundColor Cyan
 Write-Host "  Q / ESC  - Thoat"
 Write-Host "  R        - Reset FSM + Fusion + LSTM buffer"
 Write-Host "  F        - Bat/tat toan man hinh"
+Write-Host "  P        - Ket noi camera dien thoai (hien QR); N: QR moi; D: ngat"
 Write-Host "  Bat dau voi hop mo rong va hai khe nhin ro."
 Write-Host ""
 Write-Host "Dang khoi dong..." -ForegroundColor Yellow

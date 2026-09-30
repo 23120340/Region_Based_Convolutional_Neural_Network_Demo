@@ -10,6 +10,18 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
+# Clickable areas in dashboard (canvas) coordinates: x1, y1, x2, y2.
+PHONE_BUTTON = (1080, 866, 1420, 897)
+PHONE_NEXT_ADDRESS = (1000, 604, 1400, 638)
+PHONE_NEW_SESSION = (996, 652, 1130, 694)
+PHONE_DISCONNECT = (1140, 652, 1290, 694)
+PHONE_CLOSE_PANEL = (1300, 652, 1404, 694)
+_PHONE_STATE_TEXT = {
+    "idle": "Chưa kết nối", "waiting": "Chờ quét QR", "page_opened": "Đã mở trang, chờ camera",
+    "connecting": "Đang kết nối", "connected": "Connected", "disconnected": "Disconnected",
+    "expired": "QR hết hạn", "closed": "Disconnected", "error": "Lỗi",
+}
+
 
 @dataclass(frozen=True)
 class ConfirmationView:
@@ -74,6 +86,8 @@ def draw_dashboard(
     action_threshold: float, outcome=None, recent_outcomes=(),
     embedding_count: int = 0, sequence_length: int = 16,
     yolo_ms: float = 0, vit_ms: float = 0, fps: float = 0, mirror: bool = False,
+    embedding_fps: float = 0, window_duration_s: float = 0,
+    phone=None,
 ):
     """Render a fixed logical canvas, resized only by the display window."""
     canvas = np.full((900, 1440, 3), (20, 17, 14), dtype=np.uint8)
@@ -115,49 +129,34 @@ def draw_dashboard(
                              action_threshold=action_threshold)
     text((24, 17), "GIÁM SÁT LẮP TAI NGHE", 30)
     text((650, 26), f"YOLO + DINOv2 + BiLSTM  |  Đã lắp {fusion.confirmed_insertions}/2", 22, green)
-    text((24, 61), f"{fps:.1f} FPS  •  YOLO {yolo_ms:.0f} ms  •  DINO/LSTM {vit_ms:.0f} ms", 18, muted)
-    text((720, 61), f"Mirror: {'ON' if mirror else 'OFF'}", 18, muted)
-    draw.rounded_rectangle((980, 94, 1420, 853), radius=14, fill=(26, 35, 49))
-    text((1000, 110), "XÁC NHẬN TỪNG BƯỚC", 23)
-    step_names = {"confirmed": "ĐÃ XÁC NHẬN", "expected": "ĐANG CHỜ",
-                  "pending": "CHƯA THỰC HIỆN", "rework": "CẦN LÀM LẠI"}
-    for i, (label, status) in enumerate(view.steps):
-        color = green if status == "confirmed" else red if status == "rework" else amber if status == "expected" else muted
-        wrapped((1000, 151+i*54), f"{i+1}. {label}", 396, 20, color, 1)
-        text((1022, 176+i*54), step_names[status], 14, color)
+    text((24, 61), f"UI {fps:.1f} FPS  •  Embedding {embedding_fps:.1f}/10 FPS  •  Window {window_duration_s:.2f}s", 18, muted)
+    text((720, 61), f"YOLO {yolo_ms:.0f} ms  •  DINO/LSTM {vit_ms:.0f} ms  •  Mirror: {'ON' if mirror else 'OFF'}", 16, muted)
+    draw.rounded_rectangle((980, 94, 1420, 704), radius=14, fill=(26, 35, 49))
+    text((1000, 110), "QUY TRÌNH", 23)
+    for i, step in enumerate(tracker.config.workflow):
+        done = step.action in tracker.completed_steps
+        expected = step.action in tracker.expected_actions
+        color = green if done else amber if expected else muted
+        mark = "+" if done else "→" if expected else "·"
+        wrapped((1000, 154+i*48), f"{mark} {i+1}. {step.label}", 396, 20, color, 1)
 
     statuses = {
         "empty": "TRỐNG", "occupied": "TAI ĐÚNG KHE", "wrong_side": "SAI BÊN",
         "unknown": "CHƯA RÕ", "closed": "NẮP ĐÓNG",
     }
-    for i, slot in enumerate(getattr(fusion, "slot_views", ())):
-        top = 382 + i*88
-        side = "TRÁI" if "left" in slot.label else "PHẢI"
-        color = red if slot.status == "wrong_side" else green if slot.confirmed else amber
-        text((1000, top), f"KHE {side}: {statuses.get(slot.status, slot.status)}", 20, color)
-        stable = min(slot.stable_count, fusion.stable_frames)
-        text((1000, top+29), f"{slot_coverage_text(slot)} • ổn định {stable}/{fusion.stable_frames}", 15, muted)
-        empty_text = f"Empty {slot.empty_confidence:.0%}" if slot.empty_confidence is not None else "Empty —"
-        text((1000, top+53), f"{empty_text} • " + ("Đã xác nhận lắp" if slot.confirmed else "Chưa xác nhận lắp"), 15, color)
-    wrapped((1000, 574), f"FSM: {tracker.state}", 395, 17, muted, 1)
-    text((1000, 612), "LỊCH SỬ XÁC NHẬN / VI PHẠM", 18)
-    history = [item for item in recent_outcomes if item.type in {"PASS", "VIOLATION"}][-3:]
-    if not history:
-        text((1000, 654), "Chưa có bước nào được xác nhận.", 17, muted)
-    for i, item in enumerate(reversed(history)):
-        color = green if item.type == "PASS" else red
-        label = tracker.config.actions.get(item.action, item.action)
-        result = "ĐÃ XÁC NHẬN" if item.type == "PASS" else "VI PHẠM"
-        stamp = item.timestamp[11:19] + " UTC"
-        text((1000, 651+i*62), f"{stamp} • {result}", 15, color)
-        wrapped((1000, 673+i*62), label, 396, 17, white, 1)
-    text((1000, 825), "R: xóa lịch sử, bắt đầu lượt mới", 16, muted)
-
-    banner_color = red if view.kind == "violation" else green if view.kind in {"confirmed", "complete"} else amber
-    banner_fill = (64, 29, 37) if view.kind == "violation" else (25, 57, 44) if view.kind in {"confirmed", "complete"} else (49, 43, 27)
-    draw.rounded_rectangle((20, 588, 960, 682), radius=12, fill=banner_fill)
-    wrapped((36, 598), view.title, 906, 26, banner_color, 1)
-    wrapped((36, 639), view.detail, 906, 18, white, 1)
+    for i, view in enumerate(getattr(fusion, "slot_views", ())):
+        top = 365 + i*112
+        side = "TRÁI" if "left" in view.label else "PHẢI"
+        color = red if view.status == "wrong_side" else green if view.confirmed else amber
+        text((1000, top), f"KHE {side}: {statuses.get(view.status, view.status)}", 21, color)
+        text((1000, top+32),
+             f"Phủ khe {view.coverage:.0%}  •  Bằng chứng {view.evidence_seconds:.2f}/{view.required_seconds:.2f}s",
+             17, muted)
+        text((1000, top+60), "Đã xác nhận" if view.confirmed else "Chưa xác nhận lắp", 18, color)
+    observation = getattr(tracker, "observation_state", "UNKNOWN")
+    observation = getattr(observation, "value", observation)
+    wrapped((1000, 611), f"FSM: {tracker.state} • Quan sát: {observation}", 395, 17, muted, 2)
+    text((1000, 673), "R: lượt mới / đặt lại", 18, muted)
 
     if prediction is None:
         action_text = (f"Đang lấy mẫu DINOv2: {embedding_count}/{sequence_length}" if embedding_count < sequence_length
@@ -176,6 +175,102 @@ def draw_dashboard(
     draw.rounded_rectangle((20, 736, 960, 853), radius=12, fill=(25, 46, 52))
     text((36, 746), "VIỆC CẦN LÀM / ĐIỀU KIỆN ĐANG CHỜ", 17, muted)
     instruction = getattr(fusion, "instruction", tracker.instruction)
-    wrapped((36, 774), instruction, 906, 21, white, 2)
-    text((24, 873), "F: toàn màn hình   |   R: reset   |   Q / Esc: thoát", 17, muted)
+    wrapped((36, 768), instruction, 1362, 25, amber if violation else white, 2)
+    if outcome is not None:
+        wrapped((36, 833), f"Lần gần nhất: {outcome.type} · {outcome.action}",
+                1355, 17, red if violation else green, 1)
+    text((24, 873), "F: toàn màn hình  |  R: reset  |  P: camera điện thoại  |  Q / Esc: thoát", 17, muted)
+    if phone is not None:
+        _draw_phone(pil, draw, text, wrapped, phone, (white, muted, green, amber, red))
     return cv2.cvtColor(np.asarray(pil), cv2.COLOR_RGB2BGR)
+
+
+def _inside(rect, x, y) -> bool:
+    return rect[0] <= x <= rect[2] and rect[1] <= y <= rect[3]
+
+
+def phone_hit_test(x: int, y: int, view) -> str | None:
+    """Map a click on the dashboard canvas to a phone-camera action."""
+    from .phone_camera_ui import CLOSE_PANEL, DISCONNECT, NEW_SESSION, NEXT_ADDRESS, OPEN
+
+    if _inside(PHONE_BUTTON, x, y):
+        return OPEN
+    if not view.panel_open:
+        return None
+    status = view.status
+    if _inside(PHONE_NEW_SESSION, x, y):
+        return NEW_SESSION
+    if _inside(PHONE_DISCONNECT, x, y) and status is not None:
+        return DISCONNECT
+    if _inside(PHONE_CLOSE_PANEL, x, y):
+        return CLOSE_PANEL
+    if _inside(PHONE_NEXT_ADDRESS, x, y) and status is not None and status.address_count > 1:
+        return NEXT_ADDRESS
+    return None
+
+
+def _phone_label(view) -> tuple[str, str]:
+    status = view.status
+    if status is None:
+        return ("Lỗi" if view.error else "Chưa kết nối"), ("red" if view.error else "muted")
+    if status.connected:
+        return f"Connected · {status.fps:.0f} FPS", "green"
+    label = _PHONE_STATE_TEXT.get(status.state, status.state)
+    if status.state in {"disconnected", "closed", "expired", "error"}:
+        return label, "red"
+    return label, ("muted" if status.state == "idle" else "amber")
+
+
+def _draw_phone(pil, draw, text, wrapped, view, colors) -> None:
+    white, muted, green, amber, red = colors
+    palette = {"white": white, "muted": muted, "green": green, "amber": amber, "red": red}
+    label, color_name = _phone_label(view)
+    color = palette[color_name]
+    source = {"phone": "điện thoại", "local": "camera PC", "placeholder": "chờ điện thoại"}
+    text((890, 61), f"Nguồn: {source.get(view.source_kind, view.source_kind)}  •  ĐT: {label}", 18, color)
+
+    def button(rect, caption, fill, size=18):
+        draw.rounded_rectangle(rect, radius=9, fill=fill)
+        width = draw.textlength(caption, font=_font(size))
+        text((rect[0] + (rect[2] - rect[0] - width) / 2, rect[1] + (rect[3] - rect[1] - size) / 2 - 2),
+             caption, size, white)
+
+    button(PHONE_BUTTON, "Kết nối camera điện thoại", (38, 99, 196) if not view.panel_open else (52, 65, 90))
+    if not view.panel_open:
+        return
+
+    status = view.status
+    draw.rounded_rectangle((980, 94, 1420, 704), radius=14, fill=(22, 30, 44), outline=(61, 139, 253), width=2)
+    text((1000, 108), "CAMERA ĐIỆN THOẠI", 23)
+    text((1000, 140), label, 20, color)
+    if view.error:
+        wrapped((1000, 180), view.error, 396, 18, red, 8)
+    elif status is not None and status.connected:
+        text((1000, 200), "ĐÃ KẾT NỐI", 34, green)
+        wrapped((1000, 250), f"Truyền: {status.transport}", 396, 18, muted, 1)
+        if status.frame_size:
+            text((1000, 280), f"Khung hình: {status.frame_size[0]}×{status.frame_size[1]}", 18, muted)
+        wrapped((1000, 310), status.device, 396, 15, muted, 3)
+    elif view.qr is not None and status is not None and status.url:
+        qr = view.qr
+        pil.paste(Image.fromarray(cv2.cvtColor(qr, cv2.COLOR_BGR2RGB)), (1060, 172))
+        wrapped((1000, 460), status.url.split("#", 1)[0], 400, 14, muted, 2)
+        if status.expires_in is not None:
+            text((1000, 500), f"QR hết hạn sau {int(status.expires_in // 60)}:{int(status.expires_in % 60):02d}",
+                 16, muted)
+    elif status is not None and status.url:
+        wrapped((1000, 180), "Thiếu thư viện segno để vẽ QR. Mở link sau trên điện thoại:", 396, 17, amber, 2)
+        wrapped((1000, 240), status.url, 396, 15, white, 6)
+    elif status is not None:
+        wrapped((1000, 180), status.message or "Nhấn \"QR mới\" để tạo phiên kết nối.", 396, 19, white, 6)
+    if status is not None and not view.error:
+        hint = status.message if not status.connected and status.url else ""
+        if status.warnings:
+            hint = status.warnings[0]
+        if hint:
+            wrapped((1000, 524), hint, 396, 15, amber if status.warnings else muted, 3)
+        if status.address_count > 1 and not status.connected:
+            button(PHONE_NEXT_ADDRESS, f"Đổi IP ({status.address}) nếu ĐT không mở được", (52, 65, 90), 15)
+    button(PHONE_NEW_SESSION, "QR mới (N)", (38, 99, 196), 17)
+    button(PHONE_DISCONNECT, "Ngắt (D)", (179, 48, 61), 17)
+    button(PHONE_CLOSE_PANEL, "Đóng (P)", (52, 65, 90), 17)

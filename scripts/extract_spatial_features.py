@@ -20,6 +20,7 @@ if str(SRC) not in sys.path:
 
 from assembly.action_config import load_action_model_config
 from assembly.models.spatial_encoder import ViTSpatialEncoder
+from assembly.holdout import load_holdout_registry
 from assembly.paths import DEFAULT_ACTION_CONFIG, DEFAULT_ACTION_VIDEOS, DEFAULT_FEATURE_CACHE
 
 
@@ -45,12 +46,18 @@ def main() -> int:
     parser.add_argument("--device", default=None)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--holdout-manifest", type=Path,
+                        default=ROOT / "configs/holdout_regression.json")
     args = parser.parse_args()
 
     config = load_action_model_config(args.config)
     videos = sorted(path for path in args.videos_dir.rglob("*") if path.suffix.lower() in VIDEO_EXTENSIONS)
     if not videos:
         raise SystemExit(f"Không tìm thấy video trong {args.videos_dir}")
+    try:
+        load_holdout_registry(args.holdout_manifest).reject_paths(videos)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     video_ids = [_video_id(path, args.videos_dir) for path in videos]
     duplicates = sorted({video_id for video_id in video_ids if video_ids.count(video_id) > 1})
     if duplicates:

@@ -29,6 +29,7 @@ from torch.utils.data import DataLoader
 from assembly.action_config import load_action_model_config
 from assembly.action_dataset import CachedActionWindowDataset
 from assembly.models.action_net import AssemblyActionNet
+from assembly.holdout import load_holdout_registry
 from assembly.paths import DEFAULT_ACTION_ANNOTATIONS, DEFAULT_ACTION_CONFIG, DEFAULT_FEATURE_CACHE
 
 
@@ -67,6 +68,8 @@ def main() -> int:
         action="store_true",
         help="Cho phép chia train/val/test trong cùng session (dùng khi thử nghiệm trên 1 session)",
     )
+    parser.add_argument("--holdout-manifest", type=Path,
+                        default=ROOT / "configs/holdout_regression.json")
     args = parser.parse_args()
 
     if not args.annotations.is_file():
@@ -80,6 +83,16 @@ def main() -> int:
             f"Chưa có ViT feature trong {args.features_dir}. "
             "Hãy chạy scripts/extract_spatial_features.py trước."
         )
+
+    import csv
+    with args.annotations.open("r", encoding="utf-8-sig", newline="") as file:
+        rows = list(csv.DictReader(file))
+    try:
+        load_holdout_registry(args.holdout_manifest).reject_video_ids(
+            row.get("video_id", "") for row in rows
+        )
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
 
     config = load_action_model_config(args.config)
     seed = config.training.seed

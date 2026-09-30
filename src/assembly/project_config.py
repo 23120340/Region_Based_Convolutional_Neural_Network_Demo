@@ -22,6 +22,7 @@ class ProjectConfig:
     action_config: Path
     action_model: Path
     event_log: Path
+    temporal_config: Path | None
     fusion: FusionConfig
 
 
@@ -62,6 +63,11 @@ def load_project_config(path: str | Path, project_root: str | Path) -> ProjectCo
     if not isinstance(parameters, dict):
         raise ValueError("fusion.parameters phải là object JSON")
 
+    temporal_value = raw.get("temporal_config")
+    temporal_config = (
+        _project_path(root, temporal_value, "temporal_config")
+        if temporal_value is not None else None
+    )
     return ProjectConfig(
         name=name,
         display_name=display_name,
@@ -70,6 +76,7 @@ def load_project_config(path: str | Path, project_root: str | Path) -> ProjectCo
         action_config=_project_path(root, raw.get("action_config"), "action_config"),
         action_model=_project_path(root, raw.get("action_model"), "action_model"),
         event_log=_project_path(root, raw.get("event_log"), "event_log"),
+        temporal_config=temporal_config,
         fusion=FusionConfig(factory=factory, parameters=dict(parameters)),
     )
 

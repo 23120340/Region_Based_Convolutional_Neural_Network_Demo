@@ -35,7 +35,8 @@ flowchart LR
 ```
 
 - YOLO trả lời vật gì đang ở đâu và số khe còn trống.
-- DINOv2 + BiLSTM trên `main` nhận diện năm nhãn: `idle`, `open_case`, `insert_first_earbud`, `insert_second_earbud`, `close_case`. Tháo tai được kiểm tra từ geometry, không cần lớp LSTM `remove_earbud`.
+- DINOv2 + BiLSTM chỉ nhận diện bốn hành động chung: `idle`, `open_case`, `insert_earbud`, `close_case`.
+- YOLO + Temporal Fusion quyết định tai trái/phải, khe tương ứng, đúng/sai bên và occupancy 0/1/2.
 - Fusion chỉ chấp nhận bước lắp khi hành động và thay đổi vật lý cùng khớp.
 - FSM quản lý thứ tự, lỗi đóng sớm và việc tai nghe bị lấy ra.
 
@@ -44,17 +45,17 @@ flowchart LR
 | Profile | Mục đích | Trạng thái |
 |---|---|---|
 | `configs/projects/earbud.json` | Tái hiện baseline cũ 4 nhãn và detector 6 lớp | Chỉ để đối chiếu |
-| `configs/projects/earbud_v2.json` | Hướng chính: 5 action, DINOv2-Small, hai lần lắp riêng | Đang xây dựng |
+| `configs/projects/earbud_v2.json` | Hướng chính: LSTM 4 action chung + temporal fusion theo giây | Đang kiểm chứng holdout |
 
 Không dùng checkpoint baseline với config v2. Thứ tự lớp và kích thước embedding phải khớp checkpoint.
 
 ## Hiện trạng thật
 
 - Có video local trong `data/earbud_actions/raw_videos/`.
-- Có 185 đoạn annotation của 35 video; file `annotations_v2_pilot_split.csv` giữ train/val/test theo video. Kết quả pilot chưa đánh giá người/session mới.
-- Detector baseline cũ nằm trong `artifacts/training/earbud_merged_detector/`; nó không khớp detector geometry 6 lớp trái/phải.
-- Đã có `artifacts/training/earbud_geometry_detector/weights/best.pt` cho sáu lớp geometry.
-- Chưa có `artifacts/action_model_v2/best.pt`.
+- Profile v2 trỏ tới LSTM generic `artifacts/action_model_insert_earbud/best.pt` và detector geometry 6 lớp `artifacts/training/earbud_geometry_detector/weights/best.pt`.
+- Runtime dùng scheduler deadline tích lũy 10 FPS; UI hiển thị embedding FPS thực đo và độ rộng window.
+- Hai video trong `tests/` là regression holdout, bị khóa theo tên và SHA-256; không được dùng để train.
+- Checkpoint YOLO hiện vẫn bỏ lỡ occupied geometry trên `insert_test_1.mp4`; cần bổ sung failure case, không hạ ngưỡng để ép pass.
 - Python hiện tại đang dùng PyTorch CPU; muốn dùng NVIDIA GPU phải cài bản PyTorch CUDA phù hợp.
 
 ## Cài đặt
@@ -92,7 +93,17 @@ python scripts/run_earbud.py --mode camera --source 1 --auto-advance
 
 Trong cửa sổ: `C` đổi camera, `S` chụp ảnh có overlay, `R` reset, `Q`/`Esc` thoát. Ảnh chụp được lưu tại `artifacts/screenshots/`.
 
+### Camera điện thoại qua QR
+
+Trong cửa sổ `run_hybrid`, nhấn nút **Kết nối camera điện thoại** (hoặc phím `P`), quét QR bằng điện thoại cùng Wi-Fi, cho phép camera. Video được gửi bằng WebRTC (dự phòng WebSocket) và đi thẳng vào pipeline hiện tại; dashboard hiện `Connected`/`Disconnected`. Chỉ dùng điện thoại: `.\run_hybrid.ps1 -Source phone`. Chi tiết, bảo mật phiên và xử lý khác mạng: [PHONE_CAMERA.md](docs/PHONE_CAMERA.md).
+
 Runtime sẽ dừng với thông báo rõ nếu checkpoint geometry v2 chưa có. Xem [hướng dẫn camera](docs/CAMERA_REALTIME.md) và [việc bạn cần làm](docs/VIEC_BAN_CAN_LAM.md).
+
+Chạy pipeline reliable hiện hành:
+
+```powershell
+.\.venv\Scripts\python.exe scripts/run_hybrid.py --project configs/projects/earbud_v2.json --source 0 --no-mirror --fullscreen
+```
 
 ## Pipeline action v2
 
@@ -102,7 +113,7 @@ Làm đúng thứ tự:
 Annotation → split theo video/session → DINOv2 feature → train BiLSTM → evaluation
 ```
 
-Toàn bộ lệnh và quy tắc gán sáu nhãn nằm trong [LSTM_Training_Guide.md](docs/LSTM_Training_Guide.md).
+Schema bốn nhãn, shot list YOLO và luật chống leakage nằm trong [DATASET_SCHEMA_EARBUD_RELIABLE.md](docs/DATASET_SCHEMA_EARBUD_RELIABLE.md). `LSTM_Training_Guide.md` là tài liệu lịch sử cho mô hình nhiều nhãn cũ.
 
 ## Cấu trúc chính
 
@@ -133,7 +144,7 @@ src/assembly/<project>_fusion.py
 ## Kiểm thử
 
 ```powershell
-python -m unittest discover -s tests -v
+python -m pytest -q
 ```
 
 Dataset, video, feature và checkpoint lớn bị loại khỏi Git bởi `.gitignore`; chỉ code, config, annotation nhỏ và tài liệu được push lên GitHub.
@@ -141,11 +152,14 @@ Dataset, video, feature và checkpoint lớn bị loại khỏi Git bởi `.giti
 ## Tài liệu
 
 - [Việc bạn cần làm](docs/VIEC_BAN_CAN_LAM.md)
+- [Kiến trúc reliable generic insert và kết quả holdout](docs/RELIABLE_GENERIC_INSERT_IMPLEMENTATION.md)
+- [Schema dữ liệu và chống leakage](docs/DATASET_SCHEMA_EARBUD_RELIABLE.md)
 - [Notebook Kaggle: sửa DATASET_ROOTS rồi Run All](Kaggle_Training_Earbud.ipynb)
 - [Notebook Kaggle cho detector trái/phải](Kaggle_Training_Earbud_LR.ipynb)
 - [Train Earbud Detect COCO trên Kaggle](docs/KAGGLE_TRAIN_EARBUD_COCO.md)
 - [Đánh giá và train dataset RNN trái/phải](docs/DANH_GIA_DATASET_RNN.md)
 - [Năm bước train action v2](docs/LSTM_Training_Guide.md)
 - [Chạy camera và thu ảnh YOLO](docs/CAMERA_REALTIME.md)
+- [Camera điện thoại qua QR](docs/PHONE_CAMERA.md)
 - [Thiết kế Hybrid](docs/HYBRID_VIT_LSTM_ASSEMBLY_PLAN.md)
 - [Tóm tắt hợp nhất repo](docs/TOM_TAT_HOP_NHAT_REPO_20260922.md)

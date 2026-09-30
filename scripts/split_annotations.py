@@ -29,6 +29,7 @@ except (AttributeError, OSError):
 
 from assembly.paths import DEFAULT_ACTION_ANNOTATIONS
 from assembly.action_config import load_action_model_config
+from assembly.holdout import load_holdout_registry
 
 
 COLUMNS = [
@@ -218,6 +219,8 @@ def main() -> int:
     parser.add_argument("--val-videos", nargs="*", default=[])
     parser.add_argument("--test-videos", nargs="*", default=[])
     parser.add_argument("--allow-same-session", action="store_true", help="Chỉ dùng cho pilot chia theo video trong cùng session")
+    parser.add_argument("--holdout-manifest", type=Path,
+                        default=ROOT / "configs/holdout_regression.json")
     args = parser.parse_args()
 
     if not args.annotations.is_file():
@@ -226,6 +229,9 @@ def main() -> int:
         rows = _read_csv(args.annotations)
         if not rows:
             raise ValueError("File annotation rỗng")
+        load_holdout_registry(args.holdout_manifest).reject_video_ids(
+            row["video_id"] for row in rows
+        )
         config = load_action_model_config(args.config) if args.config else None
         if config:
             unknown = sorted({row["action_name"] for row in rows} - set(config.actions))

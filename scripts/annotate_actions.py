@@ -48,6 +48,7 @@ except (AttributeError, OSError):
     pass
 
 from assembly.action_config import load_action_model_config
+from assembly.holdout import load_holdout_registry
 from assembly.paths import (
     DEFAULT_ACTION_ANNOTATIONS,
     DEFAULT_ACTION_CONFIG,
@@ -62,6 +63,7 @@ ACTION_HELP = {
     "open_case": "Mở hộp và đưa vào vùng thao tác",
     "insert_first_earbud": "Lắp một tai vào hộp đang trống (0 → 1 tai)",
     "insert_second_earbud": "Lắp tai còn lại khi trong hộp đã có một tai (1 → 2 tai)",
+    "insert_earbud": "Lắp một tai nghe bất kỳ; YOLO/Fusion quyết định tai và khe",
     "close_case": "Đóng nắp hộp",
     "remove_earbud": "Nhấc một tai nghe ra khỏi khe/hộp; không phân biệt trái/phải",
 }
@@ -314,6 +316,8 @@ def main() -> int:
     parser.add_argument("--resume", action="store_true",
                         help="Nếu bật, bỏ qua video đã có annotation trong file output")
     parser.add_argument("--list-videos", action="store_true", help="Xem menu nhãn và video được chọn; không mở GUI hoặc ghi CSV")
+    parser.add_argument("--holdout-manifest", type=Path,
+                        default=ROOT / "configs/holdout_regression.json")
     args = parser.parse_args()
 
     config = load_action_model_config(args.config)
@@ -324,6 +328,10 @@ def main() -> int:
         path for path in args.videos_dir.rglob("*")
         if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
     )
+    try:
+        load_holdout_registry(args.holdout_manifest).reject_paths(videos)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     if args.session:
         selected_sessions = {str(value).strip() for value in args.session}
         videos = [

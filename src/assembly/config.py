@@ -80,12 +80,17 @@ def load_config(path: str | Path) -> AssemblyConfig:
     for state_name, rule in states.items():
         _require(isinstance(rule, dict), f"rule của {state_name} phải là object")
         allowed = rule.get("allowed", {})
+        informational = rule.get("informational", {})
         violations = rule.get("violations", {})
         _require(isinstance(allowed, dict), f"allowed của {state_name} phải là object")
+        _require(isinstance(informational, dict), f"informational của {state_name} phải là object")
         _require(isinstance(violations, dict), f"violations của {state_name} phải là object")
         for action, target in allowed.items():
             _require(action in actions, f"{state_name} dùng action lạ {action!r}")
             _require(target in states, f"{state_name} trỏ tới state lạ {target!r}")
+        for action, target in informational.items():
+            _require(action in actions, f"{state_name} dùng informational action lạ {action!r}")
+            _require(target in states, f"{state_name} informational trỏ tới state lạ {target!r}")
         for action, message in violations.items():
             _require(action in actions, f"{state_name} có violation action lạ {action!r}")
             if isinstance(message, str):

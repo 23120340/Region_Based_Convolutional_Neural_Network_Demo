@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<title>Camera điện thoại</title>
+<style>
+  :root { color-scheme: dark; --bg:#0e1116; --card:#1a2331; --text:#ebf0fa; --muted:#9fb1c4;
+          --ok:#49da93; --warn:#ffc555; --bad:#ff6875; --accent:#3d8bfd; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width:720px; margin:0 auto; padding:16px 16px calc(16px + env(safe-area-inset-bottom)); }
+  h1 { font-size:20px; margin:4px 0 12px; }
+  .status { display:flex; align-items:center; gap:10px; background:var(--card);
+            padding:10px 14px; border-radius:12px; margin-bottom:12px; }
+  .dot { width:12px; height:12px; border-radius:50%; background:var(--muted); flex:none; }
+  .dot.ok { background:var(--ok); } .dot.warn { background:var(--warn); } .dot.bad { background:var(--bad); }
+  video { width:100%; aspect-ratio:16/9; background:#000; border-radius:12px; object-fit:contain; display:block; }
+  .row { display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; }
+  button { flex:1 1 140px; min-height:48px; border:0; border-radius:10px; font:inherit; font-weight:600;
+           color:#fff; background:var(--accent); }
+  button.secondary { background:#33415a; } button.danger { background:#b3303d; }
+  button:disabled { opacity:.45; }
+  #detail { color:var(--muted); font-size:14px; margin-top:10px; min-height:1.4em; }
+  #error { color:var(--bad); margin-top:10px; white-space:pre-line; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Camera điện thoại → Assembly Monitor</h1>
+  <div class="status"><span id="dot" class="dot"></span><span id="state">Đang khởi tạo…</span></div>
+  <video id="preview" autoplay playsinline muted></video>
+  <div class="row">
+    <button id="startCam">Bật camera</button>
+    <button id="send" disabled>Gửi về hệ thống</button>
+  </div>
+  <div class="row">
+    <button id="flip" class="secondary" disabled>Đổi camera trước/sau</button>
+    <button id="stop" class="danger" disabled>Ngắt kết nối</button>
+  </div>
+  <div id="detail"></div>
+  <div id="error"></div>
+</main>
+<script>
+"use strict";
+const CONFIG = __PHONE_CONFIG__;
+const sid = decodeURIComponent(location.pathname.split("/").filter(Boolean).pop() || "");
+const tokenKey = "phone-camera-token-" + sid;
+const token = decodeURIComponent(location.hash.slice(1)) || sessionStorage.getItem(tokenKey) || "";
+if (token) sessionStorage.setItem(tokenKey, token);  // survives a page reload
+const clientKey = "phone-camera-client-" + sid;
+let clientId = sessionStorage.getItem(clientKey);
+if (!clientId) {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  clientId = Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
+  sessionStorage.setItem(clientKey, clientId);
+}
+// Keep the token out of the address bar / history once it has been read.
+if (token) history.replaceState(null, "", location.pathname);
+
+const $ = id => document.getElementById(id);
+const video = $("preview");
+let stream = null, facing = "environment", pc = null, ws = null;
+let sending = false, userStopped = false, terminal = false, retryTimer = null;
+
+function setState(text, kind, detail) {
+  $("state").textContent = text;
+  $("dot").className = "dot " + (kind || "");
+  if (detail !== undefined) $("detail").textContent = detail;
+}
+function showError(text) { $("error").textContent = text || ""; }
+function updateButtons() {
+  $("startCam").disabled = !!stream || terminal;
+  $("send").disabled = !stream || sending || terminal;
+  $("flip").disabled = !stream || terminal;
+  $("stop").disabled = !sending;
+}
+function endSession(message) {
+  terminal = true;
+  teardown();
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  stream = null; video.srcObject = null;
+  setState("Đã kết thúc", "bad", "");
+  showError(message);
+  updateButtons();
+}
+
+async function openCamera() {
+  showError("");
+  if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showError("Trình duyệt chặn camera vì trang không chạy trên HTTPS hợp lệ.\n" +
+              "Mở lại link từ QR, chọn “Nâng cao → Tiếp tục truy cập” khi có cảnh báo chứng chỉ.");
+    setState("Không truy cập được camera", "bad");
+    return false;
+  }
+  setState("Đang xin quyền camera…", "warn");
+  try {
+    const next = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
+      facingMode: { ideal: facing }, width: { ideal: CONFIG.width }, height: { ideal: CONFIG.height },
+      frameRate: { ideal: CONFIG.fps, max: CONFIG.fps } } });
+    const track = next.getVideoTracks()[0];
+    const old = stream;
+    stream = next;
+    video.srcObject = stream;
+    if (pc) {
+      const sender = pc.getSenders().find(s => s.track && s.track.kind === "video");
+      if (sender) await sender.replaceTrack(track);
+    }
+    if (old) old.getTracks().forEach(t => t.stop());
+    const s = track.getSettings();
+    setState(sending ? $("state").textContent : "Camera sẵn sàng", sending ? "ok" : "warn",
+             `Camera ${s.width || "?"}×${s.height || "?"} @ ${Math.round(s.frameRate || 0)} fps`);
+    updateButtons();
+    return true;
+  } catch (err) {
+    const denied = err && (err.name === "NotAllowedError" || err.name === "SecurityError");
+    showError(denied ? "Bạn đã từ chối quyền camera. Cho phép camera trong cài đặt trình duyệt rồi nhấn “Bật camera”."
+                     : "Không mở được camera: " + (err && err.message ? err.message : err));
+    setState("Chưa có camera", "bad");
+    updateButtons();
+    return false;
+  }
+}
+
+async function api(path, body) {
+  const response = await fetch(`/api/phone/${encodeURIComponent(sid)}/${path}`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, cache: "no-store",
+    body: JSON.stringify(Object.assign({ token, client_id: clientId }, body || {})) });
+  let data = {};
+  try { data = await response.json(); } catch (_) {}
+  return { status: response.status, data };
+}
+
+function teardown() {
+  clearTimeout(retryTimer);
+  if (pc) { const p = pc; pc = null; p.close(); }
+  if (ws) { const w = ws; ws = null; try { w.close(); } catch (_) {} }
+  sending = false;
+  updateButtons();
+}
+
+function waitIceGathering(peer, ms) {
+  if (peer.iceGatheringState === "complete") return Promise.resolve();
+  return new Promise(resolve => {
+    const done = () => { if (peer.iceGatheringState === "complete") { peer.removeEventListener("icegatheringstatechange", done); resolve(); } };
+    peer.addEventListener("icegatheringstatechange", done);
+    setTimeout(resolve, ms);
+  });
+}
+
+async function startWebRTC() {
+  const peer = new RTCPeerConnection({ iceServers: CONFIG.iceServers });
+  pc = peer;
+  const track = stream.getVideoTracks()[0];
+  track.contentHint = "motion";
+  const sender = peer.addTrack(track, stream);
+  // Closed by the PC on "Ngắt kết nối": noticed immediately, unlike ICE timeouts.
+  const control = peer.createDataChannel("control");
+  control.onclose = () => { if (pc === peer && peer.connectionState === "connected") connectionLost("PC đóng kết nối"); };
+  const offer = await peer.createOffer();
+  await peer.setLocalDescription(offer);
+  await waitIceGathering(peer, 2500);
+  const { status, data } = await api("offer", { sdp: peer.localDescription.sdp, type: "offer" });
+  if (status !== 200) { const e = new Error(data.error || `HTTP ${status}`); e.status = status; e.fallback = data.fallback; throw e; }
+  await peer.setRemoteDescription(data);
+  try {
+    const params = sender.getParameters();
+    params.encodings = params.encodings && params.encodings.length ? params.encodings : [{}];
+    params.encodings[0].maxBitrate = 2500000;
+    params.degradationPreference = "maintain-framerate";
+    await sender.setParameters(params);
+  } catch (_) { /* optional tuning */ }
+  // Resolve once media flows, reject if ICE cannot connect (other network, AP isolation).
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("ICE timeout")), 10000);
+    const check = () => {
+      if (pc !== peer) { clearTimeout(timer); reject(new Error("closed")); return; }
+      const st = peer.connectionState;
+      if (st === "connected") { clearTimeout(timer); resolve(); }
+      else if (st === "failed" || st === "closed") { clearTimeout(timer); reject(new Error("ICE " + st)); }
+    };
+    peer.addEventListener("connectionstatechange", check);
+    check();
+  });
+  peer.addEventListener("connectionstatechange", () => {
+    if (pc !== peer) return;
+    if (peer.connectionState === "disconnected") setState("Mạng chập chờn…", "warn");
+    if (peer.connectionState === "connected") setState("Connected · WebRTC", "ok");
+    if (peer.connectionState === "failed" || peer.connectionState === "closed") connectionLost();
+  });
+  setState("Connected · WebRTC", "ok", "Đang gửi video realtime về PC.");
+}
+
+function startWebSocket() {
+  return new Promise((resolve, reject) => {
+    const socket = new WebSocket(`wss://${location.host}/api/phone/${encodeURIComponent(sid)}/ws`);
+    ws = socket;
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    let authed = false, lastSent = 0;
+    const interval = 1000 / Math.max(1, CONFIG.fps);
+    const sendFrame = () => {
+      if (ws !== socket || socket.readyState !== WebSocket.OPEN) return;
+      const wait = interval - (performance.now() - lastSent);
+      if (wait > 0) { setTimeout(sendFrame, wait); return; }
+      if (!video.videoWidth) { setTimeout(sendFrame, 100); return; }
+      const scale = Math.min(1, CONFIG.width / video.videoWidth);
+      canvas.width = Math.round(video.videoWidth * scale);
+      canvas.height = Math.round(video.videoHeight * scale);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      lastSent = performance.now();
+      canvas.toBlob(blob => { if (blob && ws === socket) socket.send(blob); else setTimeout(sendFrame, 50); },
+                    "image/jpeg", CONFIG.jpegQuality);
+    };
+    socket.binaryType = "arraybuffer";
+    socket.onopen = () => socket.send(JSON.stringify({ token, client_id: clientId }));
+    socket.onmessage = event => {
+      if (!authed) {
+        const data = JSON.parse(event.data);
+        if (data.error) { const e = new Error(data.error); e.status = data.status; reject(e); return; }
+        authed = true;
+        setState("Connected · WebSocket", "ok", "Đang gửi frame JPEG (chế độ dự phòng).");
+        resolve();
+        sendFrame();
+      } else if (event.data === "ok") {
+        sendFrame();  // server acknowledged: exactly one frame in flight
+      }
+    };
+    socket.onerror = () => { if (!authed) reject(new Error("WebSocket error")); };
+    socket.onclose = () => { if (!authed) reject(new Error("WebSocket closed")); else if (ws === socket) connectionLost(); };
+  });
+}
+
+async function connect() {
+  if (!stream || terminal) return;
+  userStopped = false;
+  showError("");
+  teardown();
+  sending = true;
+  updateButtons();
+  setState("Đang kết nối tới PC…", "warn");
+  const canWebRTC = CONFIG.transport !== "websocket" && "RTCPeerConnection" in window;
+  try {
+    if (canWebRTC) {
+      try { await startWebRTC(); return; }
+      catch (err) {
+        if (err.status === 403 || err.status === 409 || err.status === 410) throw err;
+        if (CONFIG.transport === "webrtc") throw err;
+        if (pc) { const p = pc; pc = null; p.close(); }
+        setState("WebRTC không kết nối được, chuyển sang WebSocket…", "warn");
+      }
+    }
+    await startWebSocket();
+  } catch (err) {
+    sending = false;
+    updateButtons();
+    if (err.status === 403 || err.status === 409 || err.status === 410) { endSession(err.message); return; }
+    connectionLost(err.message);
+  }
+}
+
+function connectionLost(reason) {
+  if (userStopped || terminal) return;
+  teardown();
+  setState("Disconnected – đang thử lại…", "bad", reason ? "Lý do: " + reason : "");
+  retryTimer = setTimeout(connect, 2000);
+}
+
+async function hangup() {
+  userStopped = true;
+  teardown();
+  try { await api("hangup"); } catch (_) {}
+  setState("Đã dừng gửi", "warn", "Nhấn “Gửi về hệ thống” để kết nối lại.");
+}
+
+$("startCam").onclick = async () => { if (await openCamera()) connect(); };
+$("send").onclick = connect;
+$("stop").onclick = hangup;
+$("flip").onclick = () => { facing = facing === "environment" ? "user" : "environment"; openCamera(); };
+window.addEventListener("pagehide", () => {
+  if (!sending) return;
+  const body = new Blob([JSON.stringify({ token, client_id: clientId })], { type: "application/json" });
+  navigator.sendBeacon(`/api/phone/${encodeURIComponent(sid)}/hangup`, body);
+});
+
+(async () => {
+  if (!token || !sid) { endSession("Link thiếu token phiên. Hãy quét lại QR trên màn hình PC."); return; }
+  updateButtons();
+  // Many browsers allow getUserMedia without a tap; if not, the button remains.
+  if (await openCamera()) connect();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "identity_rule": "physical_identity_not_screen_position",
+  "classes": [
+    "open_case",
+    "close_case",
+    "left_earbud",
+    "right_earbud",
+    "empty_left",
+    "empty_right"
+  ],
+  "empty_label_rule": "label_only_when_slot_is_clearly_visible_and_physically_empty",
+  "split_unit": "recording_session_or_whole_video",
+  "forbid_adjacent_frame_leakage": true,
+  "required_scenarios": [
+    "both_slots_empty",
+    "left_earbud_in_left_slot_only",
+    "right_earbud_in_right_slot_only",
+    "both_earbuds_correct",
+    "left_earbud_in_right_slot",
+    "right_earbud_in_left_slot",
+    "tilted_case",
+    "partial_hand_occlusion",
+    "closed_case"
+  ],
+  "negative_samples": ["phone", "empty_table", "glove", "assembly_tools"]
+}
