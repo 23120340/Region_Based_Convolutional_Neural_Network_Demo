@@ -1,4 +1,4 @@
-"""Guard main's separate insertion labels and branch-local weight selection."""
+"""Guard the generic action model while preserving the detailed FSM workflow."""
 import csv
 import sys
 import unittest
@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from assembly.action_config import load_action_model_config
 from assembly.config import load_config
 from assembly.project_config import load_project_config
+from assembly.temporal_config import load_temporal_fusion_config
 
 
 class BranchContractTests(unittest.TestCase):
@@ -34,12 +35,19 @@ class BranchContractTests(unittest.TestCase):
 
     def test_profile_and_fsm_separate_model_labels_from_workflow(self):
         profile = load_project_config(ROOT / "configs/projects/earbud_v2.json", ROOT)
-        self.assertEqual(profile.action_model, ROOT / "artifacts/action_model_pilot/best.pt")
+        self.assertEqual(profile.action_config, ROOT / "configs/action_earbud_generic_config.json")
+        self.assertEqual(profile.action_model, ROOT / "artifacts/action_model_insert_earbud/best.pt")
+        self.assertEqual(
+            load_action_model_config(profile.action_config).actions,
+            ("idle", "open_case", "insert_earbud", "close_case"),
+        )
         fsm = load_config(profile.fsm_config)
         self.assertEqual([step.action for step in fsm.workflow],
                          ["open_case", "insert_first_earbud", "insert_second_earbud", "close_case"])
-        self.assertEqual(profile.fusion.parameters["min_action_confidence"], 0.5)
-        self.assertEqual(profile.fusion.parameters["min_detection_confidence"], 0.35)
+        self.assertIsNotNone(profile.temporal_config)
+        temporal = load_temporal_fusion_config(profile.temporal_config)
+        self.assertEqual(temporal.confidence.action_min, 0.5)
+        self.assertEqual(temporal.confidence.occupied_earbud_min, 0.5)
 
 
 if __name__ == "__main__":

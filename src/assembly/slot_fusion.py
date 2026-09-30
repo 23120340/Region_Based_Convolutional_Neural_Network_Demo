@@ -24,6 +24,8 @@ class SlotView:
     confirmed: bool
     box: tuple[int, int, int, int] | None
     confidence: float = 0.0
+    coverage_available: bool = True
+    empty_confidence: float | None = None
 
     @property
     def stable_count(self) -> int:
@@ -166,8 +168,19 @@ class PairedEarbudFusionEngine(EarbudFusionEngine):
         return EarbudFusionEvent(action, confidence, reason, self._last_scene)
 
     def _unknown_views(self, labels: tuple[str, ...]) -> None:
-        self._views = tuple(SlotView(label, "unknown", 0.0, 0.0, 0.0,
-                                     label in self._confirmed_slots, None) for label in labels)
+        self._views = tuple(
+            SlotView(
+                label=label,
+                status="unknown",
+                coverage=0.0,
+                evidence_seconds=0.0,
+                required_seconds=0.0,
+                confirmed=label in self._confirmed_slots,
+                box=None,
+                coverage_available=False,
+            )
+            for label in labels
+        )
 
     def update(
         self, detections: Iterable[Detection], action_prediction: Prediction | None = None,
@@ -243,7 +256,10 @@ class PairedEarbudFusionEngine(EarbudFusionEngine):
         for label in labels:
             box = boxes[label]
             candidates = assignments[label]
-            coverage = max((self._coverage(item, box) for item in candidates), default=0.0) if box else 0.0
+            # Show geometric overlap even below the decision threshold. Decision
+            # state still depends on the strict assignment in ``candidates``.
+            coverage = max((self._coverage(item, box) for item in earbuds), default=0.0) if box else 0.0
+            coverage_available = bool(box is not None and earbuds)
             confidence = max((item.confidence for item in candidates), default=(slots[label].confidence if slots[label] else 0.0))
             if label in ambiguous or box is None:
                 status = "unknown"
@@ -282,9 +298,18 @@ class PairedEarbudFusionEngine(EarbudFusionEngine):
                 self._removal_armed.add(label)
             elif status == "occupied":
                 self._removal_armed.discard(label)
-            views.append(SlotView(label, status, coverage, snapshot.duration_s, required,
-                                  label in self._confirmed_slots,
-                                  box.box_xyxy if box is not None else None, confidence))
+            views.append(SlotView(
+                label=label,
+                status=status,
+                coverage=coverage,
+                evidence_seconds=snapshot.duration_s,
+                required_seconds=required,
+                confirmed=label in self._confirmed_slots,
+                box=box.box_xyxy if box is not None else None,
+                confidence=confidence,
+                coverage_available=coverage_available,
+                empty_confidence=slots[label].confidence if slots[label] is not None else None,
+            ))
         self._views = tuple(views)
         confidence_values = [case.confidence] + [item.confidence for item in earbuds]
         self._last_scene = EarbudSceneState(

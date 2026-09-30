@@ -76,7 +76,7 @@ def slot_coverage_text(slot) -> str:
         return "Phủ khe: nắp đóng"
     if slot.box is None:
         return "Phủ khe: thiếu bbox khe"
-    if not slot.coverage_available:
+    if not getattr(slot, "coverage_available", True):
         return "Phủ khe: thiếu bbox tai"
     return f"Tai phủ khe {slot.coverage:.0%}"
 
@@ -124,9 +124,9 @@ def draw_dashboard(
                 line += "…"
             text((x0, y0+i*(size+8)), line, size, fill)
 
-    view = confirmation_view(tracker, outcome=outcome, recent_outcomes=recent_outcomes,
-                             prediction=prediction, prediction_fresh=prediction_fresh,
-                             action_threshold=action_threshold)
+    confirmation = confirmation_view(tracker, outcome=outcome, recent_outcomes=recent_outcomes,
+                                     prediction=prediction, prediction_fresh=prediction_fresh,
+                                     action_threshold=action_threshold)
     text((24, 17), "GIÁM SÁT LẮP TAI NGHE", 30)
     text((650, 26), f"YOLO + DINOv2 + BiLSTM  |  Đã lắp {fusion.confirmed_insertions}/2", 22, green)
     text((24, 61), f"UI {fps:.1f} FPS  •  Embedding {embedding_fps:.1f}/10 FPS  •  Window {window_duration_s:.2f}s", 18, muted)
@@ -144,15 +144,19 @@ def draw_dashboard(
         "empty": "TRỐNG", "occupied": "TAI ĐÚNG KHE", "wrong_side": "SAI BÊN",
         "unknown": "CHƯA RÕ", "closed": "NẮP ĐÓNG",
     }
-    for i, view in enumerate(getattr(fusion, "slot_views", ())):
+    for i, slot in enumerate(getattr(fusion, "slot_views", ())):
         top = 365 + i*112
-        side = "TRÁI" if "left" in view.label else "PHẢI"
-        color = red if view.status == "wrong_side" else green if view.confirmed else amber
-        text((1000, top), f"KHE {side}: {statuses.get(view.status, view.status)}", 21, color)
+        side = "TRÁI" if "left" in slot.label else "PHẢI"
+        color = red if slot.status == "wrong_side" else green if slot.confirmed else amber
+        text((1000, top), f"KHE {side}: {statuses.get(slot.status, slot.status)}", 21, color)
         text((1000, top+32),
-             f"Phủ khe {view.coverage:.0%}  •  Bằng chứng {view.evidence_seconds:.2f}/{view.required_seconds:.2f}s",
+             f"{slot_coverage_text(slot)}  •  Bằng chứng {slot.evidence_seconds:.2f}/{slot.required_seconds:.2f}s",
              17, muted)
-        text((1000, top+60), "Đã xác nhận" if view.confirmed else "Chưa xác nhận lắp", 18, color)
+        empty_confidence = getattr(slot, "empty_confidence", None)
+        empty_text = f"Empty {empty_confidence:.0%}" if empty_confidence is not None else "Empty —"
+        text((1000, top+60),
+             f"{empty_text} • " + ("Đã xác nhận" if slot.confirmed else "Chưa xác nhận lắp"),
+             18, color)
     observation = getattr(tracker, "observation_state", "UNKNOWN")
     observation = getattr(observation, "value", observation)
     wrapped((1000, 611), f"FSM: {tracker.state} • Quan sát: {observation}", 395, 17, muted, 2)
@@ -175,6 +179,7 @@ def draw_dashboard(
     draw.rounded_rectangle((20, 736, 960, 853), radius=12, fill=(25, 46, 52))
     text((36, 746), "VIỆC CẦN LÀM / ĐIỀU KIỆN ĐANG CHỜ", 17, muted)
     instruction = getattr(fusion, "instruction", tracker.instruction)
+    violation = confirmation.kind == "violation"
     wrapped((36, 768), instruction, 1362, 25, amber if violation else white, 2)
     if outcome is not None:
         wrapped((36, 833), f"Lần gần nhất: {outcome.type} · {outcome.action}",

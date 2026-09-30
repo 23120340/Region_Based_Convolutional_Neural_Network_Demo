@@ -20,15 +20,18 @@ class DashboardTests(unittest.TestCase):
     def test_coverage_distinguishes_missing_boxes_partial_overlap_and_zero(self):
         box = (0, 0, 100, 100)
         self.assertIn("thiếu bbox tai", slot_coverage_text(
-            SlotView("empty_right", "empty", 0, 3, False, box, False, 0.9)))
+            SlotView("empty_right", "empty", 0, 3, 0.8, False, box,
+                     coverage_available=False, empty_confidence=0.9)))
         self.assertIn("thiếu bbox khe", slot_coverage_text(
-            SlotView("empty_right", "unknown", 0, 0, False, None, False)))
+            SlotView("empty_right", "unknown", 0, 0, 0.15, False, None,
+                     coverage_available=False)))
         self.assertEqual(slot_coverage_text(
-            SlotView("empty_right", "unknown", 0.27, 2, False, box)), "Tai phủ khe 27%")
+            SlotView("empty_right", "unknown", 0.27, 2, 0.15, False, box)), "Tai phủ khe 27%")
         self.assertEqual(slot_coverage_text(
-            SlotView("empty_right", "empty", 0, 3, False, box)), "Tai phủ khe 0%")
+            SlotView("empty_right", "empty", 0, 3, 0.8, False, box)), "Tai phủ khe 0%")
         self.assertIn("nắp đóng", slot_coverage_text(
-            SlotView("empty_right", "closed", 0, 3, False, box, False)))
+            SlotView("empty_right", "closed", 0, 3, 0.3, False, box,
+                     coverage_available=False)))
 
     def setUp(self):
         self.tracker = ConfigurableAssemblyTracker(load_config(ROOT / "configs/earbud_v2_fsm_config.json"))
